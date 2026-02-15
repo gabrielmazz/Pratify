@@ -35,3 +35,9 @@ backend/obj/
 Thumbs.db
 *.swp
 *.swo
+
+# Arquivos de automação do git
+git-branch.sh
+git-commit.sh
+git-pull.sh
+git-revert.sh
