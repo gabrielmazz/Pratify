@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Box, Button, Container, Grid, Image, Stack, TextInput } from '@mantine/core'
+import { Alert, Box, Button, Container, Grid, Image, Stack, TextInput } from '@mantine/core'
 import { Center, Loader } from '@mantine/core'
 import { Navigate, useNavigate } from 'react-router-dom'
 
@@ -23,6 +23,8 @@ export function LoginPage() {
 	const { user, isLoading, login } = useAuth()
 	const [email, setEmail] = useState('')
 	const [password, setPassword] = useState('')
+	const [isSubmitting, setIsSubmitting] = useState(false)
+	const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
 	// Estilos personalizados para os TextInput, usando o TextInputStyle do CSS Module
 	// Aqui estamos pegando as classes do TextInputStyle e aplicando elas nas partes correspondentes do TextInput
@@ -38,15 +40,24 @@ export function LoginPage() {
 		label: ButtonStyle.label,
 	}
 
-	const handleLogin = (event: FormEvent<HTMLFormElement>) => {
+	const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault()
+		setErrorMessage(null)
+		setIsSubmitting(true)
 
-		login({
-			email,
-			password,
-		})
+		try {
+			await login({
+				email,
+				password,
+			})
 
-		navigate('/dashboard', { replace: true })
+			navigate('/dashboard', { replace: true })
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Nao foi possivel entrar.'
+			setErrorMessage(message)
+		} finally {
+			setIsSubmitting(false)
+		}
 	}
 
 	if (isLoading) {
@@ -162,7 +173,10 @@ export function LoginPage() {
 								radius="md"
 								type="email"
 								value={email}
-								onChange={(event) => setEmail(event.currentTarget.value)}
+								onChange={(event) => {
+									if (errorMessage) setErrorMessage(null)
+									setEmail(event.currentTarget.value)
+								}}
 								classNames={textInputStyle}
 							/>
 
@@ -174,15 +188,26 @@ export function LoginPage() {
 								withAsterisk
 								radius="md"
 								value={password}
-								onChange={(event) => setPassword(event.currentTarget.value)}
+								onChange={(event) => {
+									if (errorMessage) setErrorMessage(null)
+									setPassword(event.currentTarget.value)
+								}}
 								classNames={textInputStyle}
 							/>
+
+							{errorMessage && (
+								<Alert color="red" variant="light" radius="md">
+									{errorMessage}
+								</Alert>
+							)}
 
 							<Button
 								fullWidth
 								mt="md"
 								radius="md"
 								type="submit"
+								loading={isSubmitting}
+								disabled={!email.trim() || !password || isSubmitting}
 								classNames={buttonStyle}
 							>
 								Entrar

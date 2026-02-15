@@ -1,6 +1,40 @@
-@backend_HostAddress = http://localhost:5017
+# backend.http -> Colecao de testes HTTP local para autenticacao.
+#
+# COMO USAR
+# 1) Suba o backend (dotnet run).
+# 2) Execute primeiro o register (ou use login se usuario ja existir).
+# 3) Copie o token retornado no login e atribua na variavel {{token}}.
+# 4) Execute /api/auth/me para validar que token esta autenticando corretamente.
 
-GET {{backend_HostAddress}}/weatherforecast/
+@backend_HostAddress = http://localhost:5017
+@token = COLE_SEU_TOKEN_AQUI
+
+###
+# Registro de novo usuario.
+POST {{backend_HostAddress}}/api/auth/register
+Content-Type: application/json
+
+{
+  "name": "Gabriel",
+  "email": "gabriel@example.com",
+  "password": "123456"
+}
+
+###
+# Login com email/senha.
+POST {{backend_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "gabriel@example.com",
+  "password": "123456"
+}
+
+###
+# Endpoint protegido.
+# Precisa enviar Authorization: Bearer <token>
+GET {{backend_HostAddress}}/api/auth/me
+Authorization: Bearer {{token}}
 Accept: application/json
 
 ###
