@@ -1,0 +1,19 @@
+.root {
+  height: 44px;
+  border: 1px solid transparent;
+  background-color: var(--color4);
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+
+.root:hover {
+  background-color: var(--color5);
+}
+
+.root:active {
+  transform: translateY(1px);
+}
+
+.label {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}

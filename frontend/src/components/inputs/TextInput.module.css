@@ -1,0 +1,51 @@
+.root {
+  --input-radius: 12px;
+}
+
+.label {
+  margin-bottom: 0.35rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.required {
+  color: var(--color4);
+}
+
+.input {
+  height: 46px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--input-radius);
+  background-color: rgba(255, 255, 255, 0.94);
+  transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+
+.input::placeholder {
+  color: hsl(var(--muted-foreground));
+  opacity: 0.9;
+}
+
+.input:focus,
+.input:focus-within {
+  border-color: var(--color4);
+  box-shadow: 0 0 0 1px rgba(39, 144, 176, 0.22);
+  background-color: #fff;
+}
+
+.input[data-invalid] {
+  border-color: #fa5252;
+  box-shadow: 0 0 0 2px rgba(250, 82, 82, 0.18);
+}
+
+.section {
+  color: var(--color4);
+}
+
+.inputEmail {
+  border-left: 3px solid var(--color4);
+}
+
+.inputPassword {
+  border-left: 3px solid var(--color5);
+}
