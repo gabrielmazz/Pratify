@@ -1,5 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <!--
+    backend.csproj -> Arquivo de projeto .NET.
+
+    RESPONSABILIDADE
+    - Define framework alvo (net8.0).
+    - Liga recursos de linguagem (nullable e implicit usings).
+    - Lista dependencias NuGet do backend.
+
+    PACOTES PRINCIPAIS
+    - Microsoft.AspNetCore.Authentication.JwtBearer:
+      suporte para validar token JWT em endpoints protegidos.
+    - Microsoft.EntityFrameworkCore + Npgsql provider:
+      acesso ao PostgreSQL via ORM.
+    - Microsoft.EntityFrameworkCore.Design:
+      suporte a migrations e ferramentas de design-time.
+    - Swashbuckle.AspNetCore:
+      gera Swagger/OpenAPI para testar e documentar a API.
+  -->
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -7,7 +26,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.23" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.23" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.23" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.23">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.4" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
   </ItemGroup>
 
