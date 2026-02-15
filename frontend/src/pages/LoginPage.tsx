@@ -4,8 +4,8 @@ import { Center, Loader } from '@mantine/core'
 import { Navigate, useNavigate } from 'react-router-dom'
 
 // Importando o React Bits para o fundo animado
-import Grainient from '../components/Grainient'
-import SplitText from '../components/SplitText'
+import Grainient from '../components/react-bits/Grainient'
+import SplitText from '../components/react-bits/SplitText'
 
 // Importacao dos icones do React Icons
 import { MdAlternateEmail } from 'react-icons/md'
@@ -13,11 +13,12 @@ import { TbPassword } from 'react-icons/tb'
 
 // Importacao da logo do Pratify
 import Logo from '../assets/logo/logo.png'
-import TextInputStyle from '../components/inputs/TextInput.module.css'
-import ButtonStyle from '../components/buttons/PrimaryButton.module.css'
+import TextInputStyle from '../components/mantine/inputs/TextInput.module.css'
+import ButtonStyle from '../components/mantine/buttons/PrimaryButton.module.css'
 import { useAuth } from '../auth/AuthContext'
 
 export function LoginPage() {
+	
 	const navigate = useNavigate()
 	const { user, isLoading, login } = useAuth()
 	const [email, setEmail] = useState('')

@@ -1,14 +1,11 @@
-import { Avatar, Button, Card, Group, Stack, Text, Title } from '@mantine/core'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../auth/AuthContext'
-import { SideBar } from '../components/SideBar'
+import { Box } from '@mantine/core'
+import { SideBar } from '../components/custom/sidebar/SideBar'
+import { PageInfo } from '../components/custom/pageInfo/PageInfo'
+import styles from './DashboardPage.module.css'
 
 export function DashboardPage() {
-  const navigate = useNavigate()
-
-
   return (
-      <div>
+      <Box className={styles.root}>
           <SideBar
             title="NutriSaaS"
             items={[]}
@@ -16,6 +13,12 @@ export function DashboardPage() {
             color="--color4"
             defaultCollapsed={true}
           />
-      </div>
+
+          <Box className={styles.content}>
+            <PageInfo 
+              title="Dashboard"
+            />
+          </Box>
+      </Box>
   )
 }
