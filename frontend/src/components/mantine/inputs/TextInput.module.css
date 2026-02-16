@@ -9,12 +9,16 @@
   color: hsl(var(--foreground));
 }
 
+.root[data-error] .label {
+  color: #e03131;
+}
+
 .required {
   color: var(--color4);
 }
 
 .input {
-  height: 46px;
+  height: 32px;
   border: 1px solid hsl(var(--border));
   border-radius: var(--input-radius);
   background-color: rgba(255, 255, 255, 0.94);
@@ -36,10 +40,20 @@
 .input[data-invalid] {
   border-color: #fa5252;
   box-shadow: 0 0 0 2px rgba(250, 82, 82, 0.18);
+  background-color: #fff5f5;
+}
+
+.root[data-error] .input {
+  border-color: #fa5252;
+  background-color: #fff5f5;
 }
 
 .section {
   color: var(--color4);
+}
+
+.error {
+  display: none;
 }
 
 .inputEmail {
