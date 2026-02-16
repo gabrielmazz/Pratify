@@ -1,0 +1,64 @@
+.root {
+  --notification-accent: hsl(var(--primary));
+
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background-color: #fff;
+  box-shadow:
+    inset 4px 0 0 var(--notification-accent),
+    0 12px 28px rgba(16, 24, 40, 0.18);
+}
+
+.success {
+  --notification-accent: #2f9e44;
+  border-color: rgba(43, 138, 62, 0.32);
+}
+
+.error {
+  --notification-accent: #e03131;
+  border-color: rgba(224, 49, 49, 0.35);
+}
+
+.title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: hsl(var(--foreground));
+}
+
+.description {
+  margin-top: 2px;
+  font-size: 0.84rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.85),
+    0 6px 14px rgba(0, 0, 0, 0.22);
+}
+
+.success .icon {
+  background: radial-gradient(circle at 30% 30%, #51cf66, #2f9e44);
+}
+
+.error .icon {
+  background: radial-gradient(circle at 30% 30%, #ff8787, #e03131);
+}
+
+.successGlyph,
+.errorGlyph {
+  color: #fff;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+}
+
+.closeButton {
+  color: hsl(var(--muted-foreground));
+}
+
+.closeButton:hover {
+  background-color: rgba(39, 144, 176, 0.12);
+}

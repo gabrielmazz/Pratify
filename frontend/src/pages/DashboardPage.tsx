@@ -11,6 +11,7 @@ import { PageContentContainer } from '../components/custom/pageContentContainer/
 import SplitText from '../components/react-bits/SplitText'
 import { useAuth } from '../auth/AuthContext'
 import { formatBirthDateForInput, getAgeFromMaskedBirthDate, maskBirthDateInput, toPostgresTimestamptz } from '../functions/date'
+import { APP_SIDEBAR_ITEMS } from '../lib/sidebarItems'
 
 // ---------------------------------------------------------------------------
 // Tipos de dados
@@ -69,6 +70,7 @@ const textInputClassNames = {
 	root: TextInputStyle.root,
 	label: TextInputStyle.label,
 	required: TextInputStyle.required,
+	input: TextInputStyle.input,
 	section: TextInputStyle.section,
 }
 
@@ -374,7 +376,7 @@ export function DashboardPage() {
 			{/* Navegacao lateral fixa da area autenticada */}
 			<SideBar
 				title="NutriSaaS"
-				items={[]}
+				items={APP_SIDEBAR_ITEMS}
 				footer={null}
 				color="--color4"
 				defaultCollapsed={true}

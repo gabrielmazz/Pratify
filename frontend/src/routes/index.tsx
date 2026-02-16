@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { AddPatientPage } from '../pages/AddPatientPage'
 import { DashboardPage } from '../pages/DashboardPage'
 import { LoginPage } from '../pages/LoginPage'
 import { ProtectedRoute } from './ProtectedRoute'
@@ -11,6 +12,7 @@ export function AppRoutes() {
 
       <Route element={<ProtectedRoute />}>
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/patients/new" element={<AddPatientPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/login" replace />} />
