@@ -136,7 +136,8 @@ public class AuthController : ControllerBase
     }
 
     // GET /api/auth/me
-    // Endpoint protegido: exige token valido no header Authorization.
+    // Endpoint protegido, mantido por compatibilidade.
+    // Preferir novo endpoint de perfil: GET /api/users/me.
     [Authorize]
     [HttpGet("me")]
     public async Task<ActionResult<CurrentUserResponse>> Me(CancellationToken cancellationToken)
@@ -152,15 +153,7 @@ public class AuthController : ControllerBase
         // AsNoTracking evita overhead de tracking para leitura simples.
         var user = await _context.Users
             .AsNoTracking()
-            .Where(u => u.Id == userId)
-            .Select(u => new CurrentUserResponse
-            {
-                Id = u.Id,
-                Name = u.Name,
-                Email = u.Email,
-                CreatedAt = u.CreatedAt
-            })
-            .FirstOrDefaultAsync(cancellationToken);
+            .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
 
         // Token pode ser valido, mas usuario pode nao existir mais no banco.
         if (user is null)
@@ -168,7 +161,7 @@ public class AuthController : ControllerBase
             return Unauthorized(new { message = "Usuario nao encontrado." });
         }
 
-        return Ok(user);
+        return Ok(ToAuthCurrentUserResponse(user));
     }
 
     // Funcao auxiliar para manter padrao unico de resposta de autenticacao.
@@ -178,13 +171,29 @@ public class AuthController : ControllerBase
         {
             Token = tokenResult.Token,
             ExpiresAtUtc = tokenResult.ExpiresAtUtc,
-            User = new CurrentUserResponse
-            {
-                Id = user.Id,
-                Name = user.Name,
-                Email = user.Email,
-                CreatedAt = user.CreatedAt
-            }
+            User = ToAuthCurrentUserResponse(user)
+        };
+    }
+
+    // Mapeamento enxuto para o fluxo de autenticacao.
+    // Evita retornar imagem em base64 no login/session restore.
+    private static CurrentUserResponse ToAuthCurrentUserResponse(User user)
+    {
+        return new CurrentUserResponse
+        {
+            Id = user.Id,
+            Name = user.Name,
+            Email = user.Email,
+            CreatedAt = user.CreatedAt,
+            BirthDate = user.BirthDate,
+            Specialty = user.Specialty,
+            Phone = user.Phone,
+            CRN = user.CRN,
+            Institution = user.Institution,
+            ProfilePicture = null,
+            IsVerified = user.IsVerified,
+            City = user.City,
+            State = user.State
         };
     }
 }

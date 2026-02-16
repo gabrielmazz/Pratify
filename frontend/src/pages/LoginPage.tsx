@@ -40,6 +40,9 @@ export function LoginPage() {
 		label: ButtonStyle.label,
 	}
 
+	// Funcao para lidar com o envio do formulario de login, onde fazemos a chamada para a funcao de login do 
+	// AuthContext, passando o email e senha, e tratando os estados de carregamento e erro para fornecer feedback ao 
+	// usuario
 	const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault()
 		setErrorMessage(null)
@@ -60,6 +63,8 @@ export function LoginPage() {
 		}
 	}
 
+	// Se o estado de carregamento estiver ativo, exibe um loader centralizado
+	// Se o usuário já estiver autenticado, redireciona para a proxima pagina 
 	if (isLoading) {
 		return (
 			<Center mih="100vh">

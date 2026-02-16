@@ -59,6 +59,15 @@ public sealed class CurrentUserResponse
     public string Name { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
+    public DateTime? BirthDate { get; set; }
+    public string? Specialty { get; set; }
+    public string? Phone { get; set; }
+    public string? CRN { get; set; }
+    public string? Institution { get; set; }
+    public string? ProfilePicture { get; set; }
+    public bool IsVerified { get; set; }
+    public string? City { get; set; }
+    public string? State { get; set; }
 }
 
 public sealed class AuthResponse
