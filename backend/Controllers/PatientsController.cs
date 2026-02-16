@@ -4,6 +4,7 @@ using Backend.Data;
 using Backend.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Backend.Controllers;
 
@@ -16,6 +17,37 @@ public class PatientsController : ControllerBase
     public PatientsController(AppDbContext context)
     {
         _context = context;
+    }
+
+    // GET /api/patients
+    [Authorize]
+    [HttpGet]
+    public async Task<ActionResult<List<PatientListItemResponse>>> List(CancellationToken cancellationToken)
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized(new { message = "Token invalido." });
+        }
+
+        var patients = await _context.Patients
+            .AsNoTracking()
+            .Where(patient => patient.UserId == userId)
+            .OrderByDescending(patient => patient.CreatedAt)
+            .Select(patient => new PatientListItemResponse
+            {
+                Id = patient.Id,
+                Name = patient.Name,
+                BirthDate = patient.BirthDate,
+                Gender = patient.Gender,
+                BMI = patient.BMI,
+                Goal = patient.Goal,
+                ActivityLevel = patient.ActivityLevel,
+                CreatedAt = patient.CreatedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        return Ok(patients);
     }
 
     // POST /api/patients
