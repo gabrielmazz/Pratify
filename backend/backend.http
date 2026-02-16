@@ -4,7 +4,7 @@
 # 1) Suba o backend (dotnet run).
 # 2) Execute primeiro o register (ou use login se usuario ja existir).
 # 3) Copie o token retornado no login e atribua na variavel {{token}}.
-# 4) Execute /api/auth/me para validar que token esta autenticando corretamente.
+# 4) Execute /api/users/me para carregar o perfil completo do usuario autenticado.
 
 @backend_HostAddress = http://localhost:5017
 @token = COLE_SEU_TOKEN_AQUI
@@ -36,5 +36,41 @@ Content-Type: application/json
 GET {{backend_HostAddress}}/api/auth/me
 Authorization: Bearer {{token}}
 Accept: application/json
+
+###
+# Endpoint principal de perfil (recomendado).
+# Precisa enviar Authorization: Bearer <token>
+GET {{backend_HostAddress}}/api/users/me
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+# Atualiza perfil do usuario autenticado.
+POST {{backend_HostAddress}}/api/users/me
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Accept: application/json
+
+{
+  "birthDate": "1990-10-25T00:00:00.000Z",
+  "institution": "Universidade Exemplo",
+  "crn": "CRN-12345",
+  "city": "Curitiba",
+  "state": "PR"
+}
+
+###
+# Upload de foto de perfil (multipart/form-data).
+POST {{backend_HostAddress}}/api/users/me/profile-picture
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+Accept: application/json
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="profile.jpg"
+Content-Type: image/jpeg
+
+< ./profile.jpg
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
 
 ###

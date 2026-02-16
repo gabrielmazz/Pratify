@@ -17,3 +17,50 @@
   font-weight: 600;
   letter-spacing: 0.01em;
 }
+
+/* -------------------------------------------------------------------------- */
+
+/* Botões de cancelamento */
+.cancelButton {
+  height: 44px;
+  border: 1px solid transparent;
+  background-color: rgb(205, 1, 1);
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+
+.cancelButton:hover {
+  background-color: rgb(171, 2, 2);
+}
+
+.cancelButton:active {
+  transform: translateY(1px);
+}
+
+.cancelButtonLabel {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: white;
+}
+
+/* -------------------------------------------------------------------------- */
+
+/* Botão de confirmação */
+.confirmButton {
+  height: 44px;
+  border: 1px solid transparent;
+  background-color: rgb(116, 199, 6);
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+
+.confirmButton:hover {
+  background-color: rgb(78, 134, 4)
+}
+
+.confirmButton:active {
+  transform: translateY(1px);
+}
+
+.confirmButtonLabel {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}

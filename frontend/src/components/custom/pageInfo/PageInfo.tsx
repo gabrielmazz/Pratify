@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { ActionIcon, Box, Grid, Text } from '@mantine/core'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../../auth/AuthContext'
@@ -7,14 +8,17 @@ import { IoExitOutline } from 'react-icons/io5'
 import { IoMdNotificationsOutline } from 'react-icons/io'
 
 type PageInfoProps = {
-	title?: string
+	title?: ReactNode
+	titleAriaLabel?: string
 }
 
 export function PageInfo({
 	title = 'Pagina inicial',
+	titleAriaLabel,
 }: PageInfoProps) {
 	const navigate = useNavigate()
 	const { logout } = useAuth()
+	const resolvedAriaLabel = typeof title === 'string' ? title : (titleAriaLabel ?? 'Informacoes da pagina')
 
 	const handleLogout = () => {
 		logout()
@@ -24,12 +28,12 @@ export function PageInfo({
 	return (
 
 		<Box
-			aria-label={title}
+			aria-label={resolvedAriaLabel}
 			className="
                 h-[76px] w-full 
                 flex-shrink-0 
                 bg-[var(--color2)] 
-                px-4 md:ml-auto md:h-[100px] md:w-[98%] md:rounded-b-[80px] md:px-8
+                px-5 md:h-[100px] md:rounded-b-[80px] md:px-8
             "
 		>
 			<Grid
@@ -42,9 +46,11 @@ export function PageInfo({
                     span={8}
                     className="flex items-center gap-4 pl-2 md:pl-24 text-white"
                 >
-					<Text className="text-lg font-semibold md:text-3xl">
-                        {title}
-                    </Text>
+					{typeof title === 'string' ? (
+						<Text className="text-lg font-semibold md:text-3xl">
+							{title}
+						</Text>
+					) : title}
 				</Grid.Col>
 
 				<Grid.Col 
