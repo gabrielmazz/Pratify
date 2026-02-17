@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
 	Box,
 	Button,
@@ -13,6 +13,7 @@ import {
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { IoAlertCircleOutline, IoCheckmarkCircleOutline } from 'react-icons/io5'
+import { useNavigate, useParams } from 'react-router-dom'
 
 import TextInputStyle from '../components/mantine/inputs/TextInput.module.css'
 import ButtonStyle from '../components/mantine/buttons/PrimaryButton.module.css'
@@ -89,6 +90,30 @@ type CreatePatientRequest = {
 	tdee: number
 }
 
+type PatientDetailsResponse = {
+	id: number
+	name: string
+	birthDate: string
+	gender: string
+	weight: number
+	height: number
+	bmi: number
+	goal: string
+	activityLevel: string
+	medicalConditions: string[]
+	armCircumference: number
+	waistCircumference: number
+	hipCircumference: number
+	thighCircumference: number
+	subscapularSkinfold: number
+	axillarySkinfold: number
+	suprailiacSkinfold: number
+	abdominalSkinfold: number
+	bmr: number
+	tdee: number
+	createdAt: string
+}
+
 // Campos obrigatorios monitorados para estado de erro visual.
 type RequiredFieldKey =
 	| 'name'
@@ -112,6 +137,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '
 
 // Mensagens de erro padrao da tela.
 const CREATE_PATIENT_ERROR_MESSAGE = 'Nao foi possivel salvar o paciente.'
+const UPDATE_PATIENT_ERROR_MESSAGE = 'Nao foi possivel atualizar o paciente.'
+const LOAD_PATIENT_ERROR_MESSAGE = 'Nao foi possivel carregar os dados do paciente para edicao.'
 const REQUIRED_FIELDS_ERROR_MESSAGE = 'Preencha todos os campos obrigatorios antes de salvar.'
 const INVALID_BIRTH_DATE_MESSAGE = 'Informe uma data valida no formato dd/mm/aaaa.'
 
@@ -271,17 +298,84 @@ function formatCalculatedValue(value: number | null, precision = 1): string {
 	return value.toFixed(precision)
 }
 
+function formatBirthDateInputFromIso(dateValue: string): string {
+	const parsedDate = new Date(dateValue)
+	if (Number.isNaN(parsedDate.getTime())) {
+		return ''
+	}
+
+	const day = String(parsedDate.getUTCDate()).padStart(2, '0')
+	const month = String(parsedDate.getUTCMonth() + 1).padStart(2, '0')
+	const year = parsedDate.getUTCFullYear()
+
+	return `${day}/${month}/${year}`
+}
+
+function parseGoalValues(goalList: string): string[] {
+	return goalList
+		.split(',')
+		.map((goal) => goal.trim())
+		.filter((goal) => goal.length > 0)
+}
+
+function toOptionalNumericInputValue(value: number): NumericInputValue {
+	if (!Number.isFinite(value) || value <= 0) {
+		return ''
+	}
+
+	return value
+}
+
+function mapPatientDetailsToForm(patient: PatientDetailsResponse): PatientFormState {
+	return {
+		name: patient.name ?? '',
+		birthDate: formatBirthDateInputFromIso(patient.birthDate),
+		gender: patient.gender ?? null,
+		weight: Number.isFinite(patient.weight) && patient.weight > 0 ? patient.weight : '',
+		height: Number.isFinite(patient.height) && patient.height > 0 ? patient.height : '',
+		goal: parseGoalValues(patient.goal),
+		activityLevel: patient.activityLevel ?? null,
+		medicalConditions: Array.isArray(patient.medicalConditions) ? patient.medicalConditions : [],
+		armCircumference: toOptionalNumericInputValue(patient.armCircumference),
+		waistCircumference: toOptionalNumericInputValue(patient.waistCircumference),
+		hipCircumference: toOptionalNumericInputValue(patient.hipCircumference),
+		thighCircumference: toOptionalNumericInputValue(patient.thighCircumference),
+		subscapularSkinfold: toOptionalNumericInputValue(patient.subscapularSkinfold),
+		axillarySkinfold: toOptionalNumericInputValue(patient.axillarySkinfold),
+		suprailiacSkinfold: toOptionalNumericInputValue(patient.suprailiacSkinfold),
+		abdominalSkinfold: toOptionalNumericInputValue(patient.abdominalSkinfold),
+	}
+}
+
 export function AddPatientPage() {
 	// -----------------------------------------------------------------------
 	// Dependencias externas
 	// -----------------------------------------------------------------------
+	const navigate = useNavigate()
+	const { patientId } = useParams<{ patientId: string }>()
 	const { token, logout } = useAuth()
+	const isEditMode = Boolean(patientId)
+	const parsedPatientId = useMemo(() => {
+		if (!patientId) {
+			return null
+		}
+
+		const parsedPatientIdValue = Number(patientId)
+		if (!Number.isInteger(parsedPatientIdValue) || parsedPatientIdValue <= 0) {
+			return null
+		}
+
+		return parsedPatientIdValue
+	}, [patientId])
 
 	// -----------------------------------------------------------------------
 	// Estado da pagina
 	// -----------------------------------------------------------------------
 	const [patientForm, setPatientForm] = useState<PatientFormState>(initialPatientForm)
+	const [initialFormSnapshot, setInitialFormSnapshot] = useState<PatientFormState>(initialPatientForm)
 	const [isSubmitting, setIsSubmitting] = useState(false)
+	const [isLoadingPatient, setIsLoadingPatient] = useState(isEditMode)
+	const [loadPatientError, setLoadPatientError] = useState<string | null>(null)
 	const [fieldErrors, setFieldErrors] = useState<RequiredFieldErrors>({})
 
 	// -----------------------------------------------------------------------
@@ -317,9 +411,9 @@ export function AddPatientPage() {
 	// -----------------------------------------------------------------------
 	// Notificacoes
 	// -----------------------------------------------------------------------
-	const showSuccessNotification = (message: string, name: string) => {
+	const showSuccessNotification = (message: string, name: string, mode: 'create' | 'update') => {
 		notifications.show({
-			title: `Paciente ${name} cadastrado`,
+			title: mode === 'update' ? `Paciente ${name} atualizado` : `Paciente ${name} cadastrado`,
 			message,
 			color: 'green',
 			withBorder: true,
@@ -379,6 +473,86 @@ export function AddPatientPage() {
 
 		return calculateTdee(bmrValue, patientForm.activityLevel)
 	}, [bmrValue, patientForm.activityLevel])
+
+	useEffect(() => {
+		if (!isEditMode) {
+			setLoadPatientError(null)
+			setIsLoadingPatient(false)
+			setInitialFormSnapshot(initialPatientForm)
+			setPatientForm(initialPatientForm)
+			setFieldErrors({})
+			return
+		}
+
+		if (!token) {
+			setIsLoadingPatient(false)
+			return
+		}
+
+		if (parsedPatientId === null) {
+			setIsLoadingPatient(false)
+			setLoadPatientError('ID de paciente invalido para edicao.')
+			return
+		}
+
+		const controller = new AbortController()
+		const loadPatientForEdit = async () => {
+			try {
+				setIsLoadingPatient(true)
+				setLoadPatientError(null)
+
+				const response = await fetch(buildApiUrl(`/api/patients/${parsedPatientId}`), {
+					method: 'GET',
+					headers: {
+						Authorization: `Bearer ${token}`,
+						Accept: 'application/json',
+					},
+					signal: controller.signal,
+				})
+
+				if (response.status === 401) {
+					logout()
+					return
+				}
+
+				if (response.status === 404) {
+					throw new Error('Paciente nao encontrado para edicao.')
+				}
+
+				if (!response.ok) {
+					const errorMessage = await extractErrorMessage(response, LOAD_PATIENT_ERROR_MESSAGE)
+					throw new Error(errorMessage)
+				}
+
+				const patientDetails = (await response.json()) as PatientDetailsResponse
+				if (controller.signal.aborted) {
+					return
+				}
+
+				const mappedForm = mapPatientDetailsToForm(patientDetails)
+				setPatientForm(mappedForm)
+				setInitialFormSnapshot(mappedForm)
+				setFieldErrors({})
+			} catch (error) {
+				if (controller.signal.aborted) {
+					return
+				}
+
+				const message = error instanceof Error ? error.message : LOAD_PATIENT_ERROR_MESSAGE
+				setLoadPatientError(message)
+			} finally {
+				if (!controller.signal.aborted) {
+					setIsLoadingPatient(false)
+				}
+			}
+		}
+
+		void loadPatientForEdit()
+
+		return () => {
+			controller.abort()
+		}
+	}, [isEditMode, parsedPatientId, token, logout])
 
 	// -----------------------------------------------------------------------
 	// Helpers de erro por campo
@@ -458,7 +632,7 @@ export function AddPatientPage() {
 	}
 
 	const handleReset = () => {
-		setPatientForm(initialPatientForm)
+		setPatientForm(initialFormSnapshot)
 		setFieldErrors({})
 	}
 
@@ -470,6 +644,11 @@ export function AddPatientPage() {
 
 		if (!token) {
 			logout()
+			return
+		}
+
+		if (isEditMode && parsedPatientId === null) {
+			showErrorNotification('ID de paciente invalido para edicao.')
 			return
 		}
 
@@ -558,8 +737,9 @@ export function AddPatientPage() {
 
 		setIsSubmitting(true)
 		try {
-			const response = await fetch(buildApiUrl('/api/patients'), {
-				method: 'POST',
+			const apiPath = isEditMode ? `/api/patients/${parsedPatientId}` : '/api/patients'
+			const response = await fetch(buildApiUrl(apiPath), {
+				method: isEditMode ? 'PUT' : 'POST',
 				headers: {
 					Authorization: `Bearer ${token}`,
 					Accept: 'application/json',
@@ -574,24 +754,50 @@ export function AddPatientPage() {
 			}
 
 			if (response.status === 404) {
+				if (isEditMode) {
+					throw new Error('Paciente nao encontrado para edicao.')
+				}
+
 				throw new Error('Endpoint de cadastro de pacientes nao encontrado no backend (/api/patients).')
 			}
 
 			if (!response.ok) {
-				const errorMessage = await extractErrorMessage(response, CREATE_PATIENT_ERROR_MESSAGE)
+				const fallbackErrorMessage = isEditMode
+					? UPDATE_PATIENT_ERROR_MESSAGE
+					: CREATE_PATIENT_ERROR_MESSAGE
+				const errorMessage = await extractErrorMessage(response, fallbackErrorMessage)
 				throw new Error(errorMessage)
 			}
 
-			setPatientForm(initialPatientForm)
 			setFieldErrors({})
-			showSuccessNotification('Paciente cadastrado com sucesso.', normalizedName)
+			if (isEditMode) {
+				showSuccessNotification('Paciente atualizado com sucesso.', normalizedName, 'update')
+				navigate(`/patients/${parsedPatientId}`)
+				return
+			}
+
+			setPatientForm(initialPatientForm)
+			setInitialFormSnapshot(initialPatientForm)
+			showSuccessNotification('Paciente cadastrado com sucesso.', normalizedName, 'create')
 		} catch (error) {
-			const message = error instanceof Error ? error.message : CREATE_PATIENT_ERROR_MESSAGE
+			const message = error instanceof Error
+				? error.message
+				: isEditMode
+					? UPDATE_PATIENT_ERROR_MESSAGE
+					: CREATE_PATIENT_ERROR_MESSAGE
 			showErrorNotification(message)
 		} finally {
 			setIsSubmitting(false)
 		}
 	}
+
+	const pageTitle = isEditMode ? 'Editar Paciente' : 'Adicionar Paciente'
+	const introLabel = isEditMode ? 'Atualizacao de cadastro' : 'Cadastro inicial'
+	const introTitle = isEditMode ? 'Atualize os dados do paciente' : 'Preencha os dados do paciente'
+	const submitButtonLabel = isEditMode ? 'Salvar Alteracoes' : 'Salvar Paciente'
+	const resetButtonLabel = isEditMode ? 'Restaurar' : 'Limpar'
+	const isFormUnavailable = isEditMode && (isLoadingPatient || loadPatientError !== null)
+	const formId = 'add-patient-form'
 
 	// -----------------------------------------------------------------------
 	// Render
@@ -611,10 +817,10 @@ export function AddPatientPage() {
 				{/* Cabecalho da pagina */}
 				<Box className="px-3 md:px-6">
 					<PageInfo
-						title={(
-							<SplitText
-								text="Adicionar Paciente"
-								className="text-lg font-semibold leading-none text-white md:text-3xl"
+							title={(
+								<SplitText
+									text={pageTitle}
+									className="text-lg font-semibold leading-none text-white md:text-3xl"
 								delay={45}
 								duration={0.9}
 								ease="power2.out"
@@ -633,27 +839,28 @@ export function AddPatientPage() {
 						className="bg-[hsl(var(--card))]"
 						contentClassName="gap-6"
 						footer={(
-							<Group justify="flex-end" align="center" gap="md">
-								<Button
-									type="submit"
-									form="add-patient-form"
-									radius="md"
-									classNames={buttonClassNames}
-									loading={isSubmitting}
-								>
-									Salvar Paciente
-								</Button>
+								<Group justify="flex-end" align="center" gap="md">
+									<Button
+										type="submit"
+										form={formId}
+										radius="md"
+										classNames={buttonClassNames}
+										loading={isSubmitting}
+										disabled={isFormUnavailable}
+									>
+										{submitButtonLabel}
+									</Button>
 
 								<Button
 									type="button"
 									radius="md"
-									variant="outline"
-									classNames={buttonCancelClassNames}
-									onClick={handleReset}
-									disabled={isSubmitting}
-								>
-									Limpar
-								</Button>
+										variant="outline"
+										classNames={buttonCancelClassNames}
+										onClick={handleReset}
+										disabled={isSubmitting || isFormUnavailable}
+									>
+										{resetButtonLabel}
+									</Button>
 							</Group>
 						)}
 					>
@@ -661,23 +868,36 @@ export function AddPatientPage() {
 								{/* Bloco introdutorio da funcionalidade */}
 								<Box className="rounded-[28px] border border-[#c8e4ef] bg-[linear-gradient(125deg,rgba(39,144,176,0.12)_0%,rgba(148,186,101,0.13)_52%,rgba(255,255,255,0.98)_100%)] p-4 sm:p-5">
 									<Box className="max-w-[720px]">
-										<Text className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-slate-600">
-											Cadastro inicial
-										</Text>
-										<Text className="mt-1 text-lg font-semibold text-slate-900 md:text-xl">
-											Preencha os dados do paciente
+											<Text className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-slate-600">
+												{introLabel}
+											</Text>
+											<Text className="mt-1 text-lg font-semibold text-slate-900 md:text-xl">
+												{introTitle}
+											</Text>
+										</Box>
+									</Box>
+
+								{isEditMode && isLoadingPatient ? (
+									<Box className="rounded-2xl border border-[#d2e4eb] bg-white p-5">
+										<Text className="text-sm font-semibold text-slate-700">
+											Carregando dados do paciente...
 										</Text>
 									</Box>
-								</Box>
-
-							{/* Formulario principal de cadastro */}
-							<Box
-								component="form"
-								id="add-patient-form"
-								onSubmit={handleSubmit}
-								className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4 md:p-6"
-							>
-								<Grid gutter="md">
+								) : loadPatientError ? (
+									<Box className="rounded-2xl border border-red-200 bg-red-50/80 p-5">
+										<Text c="red.7" fw={600}>
+											{loadPatientError}
+										</Text>
+									</Box>
+								) : (
+									/* Formulario principal de cadastro/edicao */
+									<Box
+										component="form"
+										id={formId}
+										onSubmit={handleSubmit}
+										className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4 md:p-6"
+									>
+									<Grid gutter="md">
 									<Grid.Col span={{ base: 12, md: 8 }}>
 										<TextInput
 											label="Nome completo"
@@ -951,10 +1171,11 @@ export function AddPatientPage() {
 											classNames={textInputClassNames}
 										/>
 									</Grid.Col>
-								</Grid>
-							</Box>
-						</Stack>
-					</PageContentContainer>
+									</Grid>
+									</Box>
+								)}
+							</Stack>
+						</PageContentContainer>
 				</Box>
 			</Box>
 		</Box>

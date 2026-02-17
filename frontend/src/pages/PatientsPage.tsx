@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Box, Button, Group, Skeleton, Table, Text } from '@mantine/core'
+import { Box, Button, Group, Modal, Skeleton, Table, Text } from '@mantine/core'
 import { useNavigate } from 'react-router-dom'
 
 import ButtonStyle from '../components/mantine/buttons/PrimaryButton.module.css'
@@ -11,7 +11,14 @@ import SplitText from '../components/react-bits/SplitText'
 import { useAuth } from '../auth/AuthContext'
 import { APP_SIDEBAR_ITEMS } from '../lib/sidebarItems'
 import { cn } from '../lib/utils'
-import { MdArrowDropDown, MdArrowDropUp, MdUnfoldMore } from 'react-icons/md'
+import {
+	MdArrowDropDown,
+	MdArrowDropUp,
+	MdDeleteOutline,
+	MdEdit,
+	MdOutlineVisibility,
+	MdUnfoldMore,
+} from 'react-icons/md'
 
 type PatientListItemResponse = {
 	id: number
@@ -47,6 +54,7 @@ type SortState = {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '') ?? ''
 const LOAD_PATIENTS_ERROR_MESSAGE = 'Nao foi possivel carregar os pacientes.'
+const DELETE_PATIENT_ERROR_MESSAGE = 'Nao foi possivel excluir o paciente.'
 const GOAL_LABELS: Record<string, string> = {
 	'weight-loss': 'Emagrecimento',
 	'muscle-gain': 'Ganho muscular',
@@ -101,6 +109,19 @@ function buildApiUrl(path: string) {
 	}
 
 	return `${API_BASE_URL}${path}`
+}
+
+async function extractErrorMessage(response: Response, fallbackMessage: string): Promise<string> {
+	try {
+		const errorPayload = (await response.json()) as { message?: string }
+		if (errorPayload.message?.trim()) {
+			return errorPayload.message
+		}
+	} catch {
+		// Mantem a mensagem padrao caso o backend nao retorne JSON.
+	}
+
+	return fallbackMessage
 }
 
 function formatDate(dateValue: string) {
@@ -294,10 +315,28 @@ export function PatientsPage() {
 	const [errorMessage, setErrorMessage] = useState<string | null>(null)
 	const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null)
 	const [sortState, setSortState] = useState<SortState | null>(null)
+	const [patientToEdit, setPatientToEdit] = useState<PatientListItemResponse | null>(null)
+	const [patientToDelete, setPatientToDelete] = useState<PatientListItemResponse | null>(null)
+	const [isDeletingPatient, setIsDeletingPatient] = useState(false)
 
 	const buttonClassNames = {
 		root: ButtonStyle.root,
 		label: ButtonStyle.label,
+	}
+	const neutralButtonClassNames = {
+		root: ButtonStyle.neutralRoot,
+		label: ButtonStyle.neutralLabel,
+	}
+	const modalActionButtonSizeClassName = 'w-[128px]'
+	const modalClassNames = {
+		content:
+			'overflow-hidden rounded-2xl border border-[#c8e4ef] bg-white shadow-[0_20px_48px_rgba(15,23,42,0.24)]',
+		header:
+			'border-b border-[#d3e4eb] bg-[linear-gradient(125deg,rgba(39,144,176,0.10)_0%,rgba(148,186,101,0.10)_62%,rgba(255,255,255,0.98)_100%)] px-5 py-3',
+		title: 'text-sm font-semibold tracking-[0.01em] text-slate-900',
+		body: 'p-0',
+		close:
+			'text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800',
 	}
 
 	const hasPatients = patients.length > 0
@@ -332,6 +371,67 @@ export function PatientsPage() {
 				direction: currentSortState.direction === 'asc' ? 'desc' : 'asc',
 			}
 		})
+	}
+
+	const closeEditModal = () => {
+		setPatientToEdit(null)
+	}
+
+	const closeDeleteModal = () => {
+		if (isDeletingPatient) {
+			return
+		}
+
+		setPatientToDelete(null)
+	}
+
+	const handleConfirmEdit = () => {
+		if (!patientToEdit) {
+			return
+		}
+
+		navigate(`/patients/${patientToEdit.id}/edit`)
+		closeEditModal()
+	}
+
+	const handleConfirmDelete = async () => {
+		if (!token || !patientToDelete || isDeletingPatient) {
+			return
+		}
+
+		try {
+			setIsDeletingPatient(true)
+			setErrorMessage(null)
+
+			const response = await fetch(buildApiUrl(`/api/patients/${patientToDelete.id}`), {
+				method: 'DELETE',
+				headers: {
+					Authorization: `Bearer ${token}`,
+					Accept: 'application/json',
+				},
+			})
+
+			if (response.status === 401) {
+				logout()
+				return
+			}
+
+			if (!response.ok) {
+				const message = await extractErrorMessage(response, DELETE_PATIENT_ERROR_MESSAGE)
+				throw new Error(message)
+			}
+
+			setPatients((currentPatients) =>
+				currentPatients.filter((currentPatient) => currentPatient.id !== patientToDelete.id),
+			)
+			setLastUpdatedAt(new Date())
+			setPatientToDelete(null)
+		} catch (error) {
+			const message = error instanceof Error ? error.message : DELETE_PATIENT_ERROR_MESSAGE
+			setErrorMessage(message)
+		} finally {
+			setIsDeletingPatient(false)
+		}
 	}
 
 	const loadPatients = async (signal?: AbortSignal) => {
@@ -434,12 +534,15 @@ export function PatientsPage() {
 									<Text className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-slate-600">
 										Listagem de pacientes
 									</Text>
-									<Text className="mt-1 text-lg font-semibold text-slate-900 md:text-xl">
-										Visao geral dos pacientes
-									</Text>
-								</Box>	
-							</Group>
-						</Box>
+										<Text className="mt-1 text-lg font-semibold text-slate-900 md:text-xl">
+											Visao geral dos pacientes
+										</Text>
+										<Text className="mt-2 text-xs font-medium text-slate-600">
+											{formatLastUpdatedAt(lastUpdatedAt)}
+										</Text>
+									</Box>	
+								</Group>
+							</Box>
 
 						{isLoading ? (
 							<Box className="rounded-3xl border border-[hsl(var(--border))] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbfd_100%)] p-4">
@@ -484,8 +587,8 @@ export function PatientsPage() {
 								<Box className="patients-table-scroll min-h-0 flex-1 overflow-auto">
 									<Table
 										verticalSpacing="sm"
-										horizontalSpacing="md"
-										className="min-w-[1100px]"
+										horizontalSpacing="sm"
+										className="min-w-[1020px]"
 									>
 										<Table.Thead>
 											<Table.Tr>
@@ -615,7 +718,7 @@ export function PatientsPage() {
 														</span>
 													</button>
 												</Table.Th>
-												<Table.Th className="sticky top-0 z-10 border-b border-[#d2e4eb] bg-[#edf5f8] text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-slate-600">
+												<Table.Th className="sticky top-0 z-10 w-[1%] whitespace-nowrap border-b border-[#d2e4eb] bg-[#edf5f8] text-center text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-slate-600">
 													Acoes
 												</Table.Th>
 											</Table.Tr>
@@ -727,15 +830,39 @@ export function PatientsPage() {
 															{formatDate(patient.createdAt)}
 														</Table.Td>
 
-														<Table.Td>
-															<button
-																type="button"
-																onClick={() => navigate(`/patients/${patient.id}`)}
-																aria-label={`Visualizar paciente ${patient.name}`}
-																className="inline-flex items-center rounded-md border border-[#b7d4df] bg-white px-2.5 py-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-[#2b5f70] transition-colors hover:bg-[#eef7fb]"
-															>
-																Visualizar
-															</button>
+														<Table.Td className="w-[1%] whitespace-nowrap py-2">
+															<Group gap={4} wrap="nowrap">
+																<button
+																	type="button"
+																	onClick={() => navigate(`/patients/${patient.id}`)}
+																	aria-label={`Visualizar paciente ${patient.name}`}
+																	className="inline-flex h-7 items-center gap-1 rounded-md border border-[#b7d4df] bg-white px-2 py-1 text-[0.62rem] font-semibold uppercase leading-none tracking-[0.04em] text-[#2b5f70] transition-colors hover:bg-[#eef7fb]"
+																>
+																	<MdOutlineVisibility aria-hidden size={12} />
+																	Ver
+																</button>
+
+																<button
+																	type="button"
+																	onClick={() => setPatientToEdit(patient)}
+																	aria-label={`Editar paciente ${patient.name}`}
+																	className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-200 bg-white px-2 py-1 text-[0.62rem] font-semibold uppercase leading-none tracking-[0.04em] text-amber-700 transition-colors hover:bg-amber-50"
+																>
+																	<MdEdit aria-hidden size={12} />
+																	Editar
+																</button>
+
+																<button
+																	type="button"
+																	onClick={() => setPatientToDelete(patient)}
+																	aria-label={`Excluir paciente ${patient.name}`}
+																	disabled={isDeletingPatient}
+																	className="inline-flex h-7 items-center gap-1 rounded-md border border-red-200 bg-white px-2 py-1 text-[0.62rem] font-semibold uppercase leading-none tracking-[0.04em] text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+																>
+																	<MdDeleteOutline aria-hidden size={12} />
+																	Excluir
+																</button>
+															</Group>
 														</Table.Td>
 													</Table.Tr>
 												)
@@ -748,6 +875,100 @@ export function PatientsPage() {
 					</PageContentContainer>
 				</Box>
 			</Box>
+
+			<Modal
+				opened={patientToEdit !== null}
+				onClose={closeEditModal}
+				title="Confirmar edição"
+				centered
+				size="30%"
+				classNames={modalClassNames}
+				overlayProps={{ blur: 2, backgroundOpacity: 0.45 }}
+			>
+				<Box className="px-5 pb-5 pt-4">
+					<Group align="flex-start" wrap="nowrap" gap="sm" className="flex items-center">
+						<Box className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 text-amber-700">
+							<MdEdit aria-hidden size={18} />
+						</Box>
+
+						<Box className="min-w-0">
+							<Text className="mt-1 text-sm leading-relaxed text-slate-700">
+								Deseja realmente editar os dados de{' '}
+								<Text component="span" className="font-semibold text-slate-900">
+									{patientToEdit?.name}
+								</Text>
+								?
+							</Text>
+						</Box>
+					</Group>
+
+					<Group justify="flex-end" gap="sm" mt="xl" className="border-t border-[#e4edf1] pt-4">
+						<Button
+							onClick={closeEditModal}
+							classNames={neutralButtonClassNames}
+							className={modalActionButtonSizeClassName}
+						>
+							Cancelar
+						</Button>
+						<Button
+							classNames={buttonClassNames}
+							onClick={handleConfirmEdit}
+							className={modalActionButtonSizeClassName}
+						>
+							Sim, editar
+						</Button>
+					</Group>
+				</Box>
+			</Modal>
+
+			<Modal
+				opened={patientToDelete !== null}
+				onClose={closeDeleteModal}
+				title="Confirmar exclusão"
+				centered
+				size="30%"
+				closeOnClickOutside={!isDeletingPatient}
+				closeOnEscape={!isDeletingPatient}
+				withCloseButton={!isDeletingPatient}
+				classNames={modalClassNames}
+				overlayProps={{ blur: 2, backgroundOpacity: 0.45 }}
+			>
+				<Box className="px-5 pb-5 pt-4">
+					<Group align="flex-start" wrap="nowrap" gap="sm" className="flex items-center">
+						<Box className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-700">
+							<MdDeleteOutline aria-hidden size={18} />
+						</Box>
+
+						<Box className="min-w-0">
+							<Text className="mt-1 text-sm leading-relaxed text-slate-700">
+								Deseja realmente excluir{' '}
+								<Text component="span" className="font-semibold text-slate-900">
+									{patientToDelete?.name}
+								</Text>{' '}
+								da listagem?
+							</Text>
+						</Box>
+					</Group>
+
+					<Group justify="flex-end" gap="sm" mt="xl" className="border-t border-[#e4edf1] pt-4">
+						<Button
+							onClick={closeDeleteModal}
+							disabled={isDeletingPatient}
+							classNames={neutralButtonClassNames}
+							className={modalActionButtonSizeClassName}
+						>
+							Cancelar
+						</Button>
+						<Button
+							onClick={handleConfirmDelete}
+							loading={isDeletingPatient}
+							className="h-11 w-[128px] border border-red-600 bg-red-600 text-white transition-colors hover:bg-red-700"
+						>
+							Sim, excluir
+						</Button>
+					</Group>
+				</Box>
+			</Modal>
 		</Box>
 	)
 }

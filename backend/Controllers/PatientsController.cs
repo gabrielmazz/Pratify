@@ -161,6 +161,97 @@ public class PatientsController : ControllerBase
         });
     }
 
+    // PUT /api/patients/{id}
+    [Authorize]
+    [HttpPut("{id:int}")]
+    public async Task<IActionResult> Update(int id, [FromBody] CreatePatientRequest request, CancellationToken cancellationToken)
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized(new { message = "Token invalido." });
+        }
+
+        var patient = await _context.Patients
+            .FirstOrDefaultAsync(currentPatient => currentPatient.UserId == userId && currentPatient.Id == id, cancellationToken);
+
+        if (patient is null)
+        {
+            return NotFound(new { message = "Paciente nao encontrado." });
+        }
+
+        var birthDateUtc = NormalizeBirthDateUtc(request.BirthDate);
+        if (birthDateUtc is null)
+        {
+            return BadRequest(new { message = "Data de nascimento invalida." });
+        }
+
+        var normalizedGoal = NormalizeList(request.Goal);
+        if (normalizedGoal.Count == 0)
+        {
+            return BadRequest(new { message = "Informe ao menos um objetivo do paciente." });
+        }
+
+        var goalAsText = string.Join(", ", normalizedGoal);
+        if (goalAsText.Length > 200)
+        {
+            return BadRequest(new { message = "Objetivos excedem o limite de 200 caracteres." });
+        }
+
+        patient.Name = request.Name.Trim();
+        patient.BirthDate = birthDateUtc.Value;
+        patient.Gender = request.Gender.Trim();
+        patient.Weight = request.Weight;
+        patient.Height = request.Height;
+        patient.BMI = request.BMI;
+        patient.Goal = goalAsText;
+        patient.ActivityLevel = request.ActivityLevel.Trim();
+        patient.MedicalConditions = NormalizeList(request.MedicalConditions);
+        patient.ArmCircumference = request.ArmCircumference ?? 0f;
+        patient.WaistCircumference = request.WaistCircumference ?? 0f;
+        patient.HipCircumference = request.HipCircumference ?? 0f;
+        patient.ThighCircumference = request.ThighCircumference ?? 0f;
+        patient.SubscapularSkinfold = request.SubscapularSkinfold ?? 0f;
+        patient.AxillarySkinfold = request.AxillarySkinfold ?? 0f;
+        patient.SuprailiacSkinfold = request.SuprailiacSkinfold ?? 0f;
+        patient.AbdominalSkinfold = request.AbdominalSkinfold ?? 0f;
+        patient.BMR = request.BMR;
+        patient.TDEE = request.TDEE;
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return Ok(new
+        {
+            id = patient.Id,
+            message = "Paciente atualizado com sucesso."
+        });
+    }
+
+    // DELETE /api/patients/{id}
+    [Authorize]
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized(new { message = "Token invalido." });
+        }
+
+        var patient = await _context.Patients
+            .FirstOrDefaultAsync(currentPatient => currentPatient.UserId == userId && currentPatient.Id == id, cancellationToken);
+
+        if (patient is null)
+        {
+            return NotFound(new { message = "Paciente nao encontrado." });
+        }
+
+        _context.Patients.Remove(patient);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return Ok(new { message = "Paciente excluido com sucesso." });
+    }
+
     private static DateTime? NormalizeBirthDateUtc(DateTime birthDate)
     {
         if (birthDate == default)
