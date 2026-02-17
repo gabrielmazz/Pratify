@@ -41,3 +41,7 @@ git-branch.sh
 git-commit.sh
 git-pull.sh
 git-revert.sh
+
+# Arquivos de configuração do Ollama
+ia/env.sh
+ia/.ollama_models/
