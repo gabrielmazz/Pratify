@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Box, Button, Group, Loader, Table, Text } from '@mantine/core'
+import { Box, Button, Group, Skeleton, Table, Text } from '@mantine/core'
+import { useNavigate } from 'react-router-dom'
 
 import ButtonStyle from '../components/mantine/buttons/PrimaryButton.module.css'
 import { SideBar } from '../components/custom/sidebar/SideBar'
@@ -9,6 +10,8 @@ import { PageContentContainer } from '../components/custom/pageContentContainer/
 import SplitText from '../components/react-bits/SplitText'
 import { useAuth } from '../auth/AuthContext'
 import { APP_SIDEBAR_ITEMS } from '../lib/sidebarItems'
+import { cn } from '../lib/utils'
+import { MdArrowDropDown, MdArrowDropUp, MdUnfoldMore } from 'react-icons/md'
 
 type PatientListItemResponse = {
 	id: number
@@ -21,8 +24,76 @@ type PatientListItemResponse = {
 	createdAt: string
 }
 
+type PillMeta = {
+	label: string
+	className: string
+}
+
+type SortKey =
+	| 'name'
+	| 'birthDate'
+	| 'gender'
+	| 'goal'
+	| 'activityLevel'
+	| 'bmi'
+	| 'createdAt'
+
+type SortDirection = 'asc' | 'desc'
+
+type SortState = {
+	key: SortKey
+	direction: SortDirection
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '') ?? ''
 const LOAD_PATIENTS_ERROR_MESSAGE = 'Nao foi possivel carregar os pacientes.'
+const GOAL_LABELS: Record<string, string> = {
+	'weight-loss': 'Emagrecimento',
+	'muscle-gain': 'Ganho muscular',
+	'dietary-reeducation': 'Reeducacao alimentar',
+	'weight-maintenance': 'Manutencao de peso',
+	'sports-performance': 'Performance esportiva',
+	'metabolic-health': 'Saude metabolica',
+	'intestinal-health': 'Saude intestinal',
+}
+const DEFAULT_PILL_CLASS =
+	'border border-slate-200 bg-slate-100 text-slate-700'
+const GENDER_META_BY_VALUE: Record<string, PillMeta> = {
+	female: {
+		label: 'Feminino',
+		className: 'border border-rose-200 bg-rose-50 text-rose-700',
+	},
+	male: {
+		label: 'Masculino',
+		className: 'border border-sky-200 bg-sky-50 text-sky-700',
+	},
+	other: {
+		label: 'Outro',
+		className: 'border border-violet-200 bg-violet-50 text-violet-700',
+	},
+}
+const ACTIVITY_META_BY_VALUE: Record<string, PillMeta> = {
+	sedentary: {
+		label: 'Sedentario',
+		className: 'border border-slate-200 bg-slate-100 text-slate-700',
+	},
+	light: {
+		label: 'Leve',
+		className: 'border border-amber-200 bg-amber-50 text-amber-700',
+	},
+	moderate: {
+		label: 'Moderado',
+		className: 'border border-cyan-200 bg-cyan-50 text-cyan-700',
+	},
+	intense: {
+		label: 'Intenso',
+		className: 'border border-emerald-200 bg-emerald-50 text-emerald-700',
+	},
+	'very-intense': {
+		label: 'Muito intenso',
+		className: 'border border-lime-200 bg-lime-50 text-lime-700',
+	},
+}
 
 function buildApiUrl(path: string) {
 	if (!API_BASE_URL) {
@@ -65,23 +136,209 @@ function formatActivityLevel(activityLevel: string) {
 	return labels[activityLevel] ?? activityLevel
 }
 
+function toStartCase(value: string) {
+	return value
+		.trim()
+		.replace(/[-_]+/g, ' ')
+		.split(/\s+/)
+		.filter((word) => word.length > 0)
+		.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+		.join(' ')
+}
+
+function formatGoal(goal: string) {
+	const normalizedGoal = goal.trim().toLowerCase()
+	if (!normalizedGoal) {
+		return ''
+	}
+
+	return GOAL_LABELS[normalizedGoal] ?? toStartCase(normalizedGoal)
+}
+
+function parseGoalTags(goalList: string) {
+	return goalList
+		.split(',')
+		.map((goal) => formatGoal(goal))
+		.filter((goal) => goal.length > 0)
+}
+
+function getGenderMeta(gender: string): PillMeta {
+	const mappedGender = GENDER_META_BY_VALUE[gender]
+	if (mappedGender) {
+		return mappedGender
+	}
+
+	return {
+		label: formatGender(gender),
+		className: DEFAULT_PILL_CLASS,
+	}
+}
+
+function getActivityMeta(activityLevel: string): PillMeta {
+	const mappedActivity = ACTIVITY_META_BY_VALUE[activityLevel]
+	if (mappedActivity) {
+		return mappedActivity
+	}
+
+	return {
+		label: formatActivityLevel(activityLevel),
+		className: DEFAULT_PILL_CLASS,
+	}
+}
+
+function getBmiMeta(bmi: number): PillMeta {
+	if (bmi < 18.5) {
+		return {
+			label: 'Abaixo',
+			className: 'border border-amber-200 bg-amber-50 text-amber-700',
+		}
+	}
+
+	if (bmi < 25) {
+		return {
+			label: 'Saudavel',
+			className: 'border border-emerald-200 bg-emerald-50 text-emerald-700',
+		}
+	}
+
+	if (bmi < 30) {
+		return {
+			label: 'Elevado',
+			className: 'border border-orange-200 bg-orange-50 text-orange-700',
+		}
+	}
+
+	return {
+		label: 'Alto risco',
+		className: 'border border-rose-200 bg-rose-50 text-rose-700',
+	}
+}
+
+function formatLastUpdatedAt(lastUpdatedAt: Date | null) {
+	if (!lastUpdatedAt) {
+		return 'Use "Atualizar" para buscar os dados mais recentes.'
+	}
+
+	return `Ultima atualizacao em ${lastUpdatedAt.toLocaleDateString('pt-BR')} as ${lastUpdatedAt.toLocaleTimeString('pt-BR', {
+		hour: '2-digit',
+		minute: '2-digit',
+	})}`
+}
+
+function toTimestamp(value: string) {
+	const parsedDate = new Date(value)
+	if (Number.isNaN(parsedDate.getTime())) {
+		return 0
+	}
+
+	return parsedDate.getTime()
+}
+
+function comparePatientValues(left: PatientListItemResponse, right: PatientListItemResponse, key: SortKey) {
+	const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true })
+
+	if (key === 'name') {
+		return collator.compare(left.name, right.name)
+	}
+
+	if (key === 'birthDate') {
+		return toTimestamp(left.birthDate) - toTimestamp(right.birthDate)
+	}
+
+	if (key === 'gender') {
+		return collator.compare(formatGender(left.gender), formatGender(right.gender))
+	}
+
+	if (key === 'goal') {
+		const leftGoals = parseGoalTags(left.goal).join(', ')
+		const rightGoals = parseGoalTags(right.goal).join(', ')
+		return collator.compare(leftGoals, rightGoals)
+	}
+
+	if (key === 'activityLevel') {
+		return collator.compare(formatActivityLevel(left.activityLevel), formatActivityLevel(right.activityLevel))
+	}
+
+	if (key === 'bmi') {
+		return left.bmi - right.bmi
+	}
+
+	return toTimestamp(left.createdAt) - toTimestamp(right.createdAt)
+}
+
+function getAriaSortValue(key: SortKey, sortState: SortState | null) {
+	if (!sortState || sortState.key !== key) {
+		return 'none'
+	}
+
+	return sortState.direction === 'asc' ? 'ascending' : 'descending'
+}
+
+function getSortIcon(key: SortKey, sortState: SortState | null) {
+	if (!sortState || sortState.key !== key) {
+		return <MdUnfoldMore aria-hidden size={16} className="text-slate-400" />
+	}
+
+	if (sortState.direction === 'asc') {
+		return <MdArrowDropUp aria-hidden size={18} className="text-slate-700" />
+	}
+
+	return <MdArrowDropDown aria-hidden size={18} className="text-slate-700" />
+}
+
 export function PatientsPage() {
+	const navigate = useNavigate()
 	const { token, logout } = useAuth()
 	const [patients, setPatients] = useState<PatientListItemResponse[]>([])
 	const [isLoading, setIsLoading] = useState(true)
 	const [errorMessage, setErrorMessage] = useState<string | null>(null)
+	const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null)
+	const [sortState, setSortState] = useState<SortState | null>(null)
 
 	const buttonClassNames = {
 		root: ButtonStyle.root,
 		label: ButtonStyle.label,
 	}
 
-	const hasPatients = useMemo(() => patients.length > 0, [patients.length])
+	const hasPatients = patients.length > 0
+	const sortedPatients = useMemo(() => {
+		if (!sortState) {
+			return patients
+		}
+
+		const orderedPatients = [...patients].sort((leftPatient, rightPatient) => {
+			const comparison = comparePatientValues(leftPatient, rightPatient, sortState.key)
+			if (comparison !== 0) {
+				return sortState.direction === 'asc' ? comparison : -comparison
+			}
+
+			return leftPatient.id - rightPatient.id
+		})
+
+		return orderedPatients
+	}, [patients, sortState])
+
+	const handleSortByColumn = (key: SortKey) => {
+		setSortState((currentSortState) => {
+			if (!currentSortState || currentSortState.key !== key) {
+				return {
+					key,
+					direction: 'asc',
+				}
+			}
+
+			return {
+				key,
+				direction: currentSortState.direction === 'asc' ? 'desc' : 'asc',
+			}
+		})
+	}
 
 	const loadPatients = async (signal?: AbortSignal) => {
 		if (!token) {
 			setPatients([])
 			setIsLoading(false)
+			setLastUpdatedAt(null)
 			return
 		}
 
@@ -110,6 +367,7 @@ export function PatientsPage() {
 			const data = (await response.json()) as PatientListItemResponse[]
 			if (!signal?.aborted) {
 				setPatients(data)
+				setLastUpdatedAt(new Date())
 			}
 		} catch (error) {
 			if (signal?.aborted) {
@@ -168,76 +426,324 @@ export function PatientsPage() {
 				<Box className="min-h-0 flex-1 p-3 md:p-6">
 					<PageContentContainer
 						className="bg-[hsl(var(--card))]"
-						contentClassName="gap-4"
+						contentClassName="gap-5 overflow-hidden"
 					>
-						<Group justify="space-between">
-							<Text className="text-sm text-[hsl(var(--muted-foreground))]">
-								Listagem geral dos pacientes cadastrados.
-							</Text>
-
-							<Button
-								type="button"
-								radius="md"
-								classNames={buttonClassNames}
-								onClick={() => void loadPatients()}
-								loading={isLoading}
-							>
-								Atualizar
-							</Button>
-						</Group>
+						<Box className="rounded-[28px] border border-[#c8e4ef] bg-[linear-gradient(125deg,rgba(39,144,176,0.12)_0%,rgba(148,186,101,0.13)_52%,rgba(255,255,255,0.98)_100%)] p-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)] sm:p-5">
+							<Group justify="space-between" align="flex-start" gap="md">
+								<Box className="max-w-[720px]">
+									<Text className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-slate-600">
+										Listagem de pacientes
+									</Text>
+									<Text className="mt-1 text-lg font-semibold text-slate-900 md:text-xl">
+										Visao geral dos pacientes
+									</Text>
+								</Box>	
+							</Group>
+						</Box>
 
 						{isLoading ? (
-							<Box className="flex min-h-[220px] items-center justify-center">
-								<Loader color="teal" />
+							<Box className="rounded-3xl border border-[hsl(var(--border))] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbfd_100%)] p-4">
+								<Box className="grid grid-cols-8 gap-3 rounded-xl border border-[#d2e4eb] bg-[#edf5f8] p-3">
+									{Array.from({ length: 8 }).map((_, index) => (
+										<Skeleton key={`patients-table-header-${index}`} height={12} radius="sm" />
+									))}
+								</Box>
+
+								<Box className="mt-3 space-y-2">
+									{Array.from({ length: 7 }).map((_, rowIndex) => (
+										<Box
+											key={`patients-table-row-${rowIndex}`}
+											className="grid grid-cols-8 gap-3 rounded-xl border border-slate-100 bg-white p-3"
+										>
+											<Skeleton height={16} radius="sm" />
+											<Skeleton height={16} radius="sm" />
+											<Skeleton height={22} radius="xl" />
+											<Skeleton height={16} radius="sm" />
+											<Skeleton height={22} radius="xl" />
+											<Skeleton height={16} radius="sm" />
+											<Skeleton height={16} radius="sm" />
+											<Skeleton height={24} radius="md" />
+										</Box>
+									))}
+								</Box>
 							</Box>
 						) : errorMessage ? (
-							<Box className="rounded-xl border border-red-200 bg-red-50 p-4">
+							<Box className="rounded-3xl border border-red-200 bg-red-50/80 p-5">
 								<Text c="red.7" fw={600}>
 									{errorMessage}
 								</Text>
 							</Box>
 						) : !hasPatients ? (
-							<Box className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4">
-								<Text className="text-sm text-[hsl(var(--muted-foreground))]">
+							<Box className="rounded-3xl border border-[hsl(var(--border))] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbfd_100%)] p-5 shadow-[0_10px_26px_rgba(17,24,39,0.06)]">
+								<Text className="text-sm font-medium text-[hsl(var(--muted-foreground))]">
 									Nenhum paciente cadastrado ainda.
 								</Text>
 							</Box>
 						) : (
-							<Table
-								striped
-								highlightOnHover
-								withTableBorder
-								withColumnBorders
-								verticalSpacing="sm"
-								horizontalSpacing="md"
-								className="min-w-[860px]"
-							>
-								<Table.Thead>
-									<Table.Tr>
-										<Table.Th>Nome</Table.Th>
-										<Table.Th>Nascimento</Table.Th>
-										<Table.Th>Sexo</Table.Th>
-										<Table.Th>Objetivo</Table.Th>
-										<Table.Th>Atividade</Table.Th>
-										<Table.Th>IMC</Table.Th>
-										<Table.Th>Criado em</Table.Th>
-									</Table.Tr>
-								</Table.Thead>
+							<Box className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-[#d2e4eb] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbfd_100%)]">
+								<Box className="patients-table-scroll min-h-0 flex-1 overflow-auto">
+									<Table
+										verticalSpacing="sm"
+										horizontalSpacing="md"
+										className="min-w-[1100px]"
+									>
+										<Table.Thead>
+											<Table.Tr>
+												<Table.Th
+													aria-sort={getAriaSortValue('name', sortState)}
+													className="sticky top-0 z-10 border-b border-[#d2e4eb] bg-[#edf5f8] text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-slate-600"
+												>
+													<button
+														type="button"
+														onClick={() => handleSortByColumn('name')}
+														className={cn(
+															'flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-1 py-1 text-left transition-colors hover:text-slate-900',
+															sortState?.key === 'name' && 'text-slate-900',
+														)}
+													>
+														<span>Nome</span>
+														<span className="inline-flex h-4 w-4 items-center justify-center">
+															{getSortIcon('name', sortState)}
+														</span>
+													</button>
+												</Table.Th>
+												<Table.Th
+													aria-sort={getAriaSortValue('birthDate', sortState)}
+													className="sticky top-0 z-10 border-b border-[#d2e4eb] bg-[#edf5f8] text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-slate-600"
+												>
+													<button
+														type="button"
+														onClick={() => handleSortByColumn('birthDate')}
+														className={cn(
+															'flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-1 py-1 text-left transition-colors hover:text-slate-900',
+															sortState?.key === 'birthDate' && 'text-slate-900',
+														)}
+													>
+														<span>Nascimento</span>
+														<span className="inline-flex h-4 w-4 items-center justify-center">
+															{getSortIcon('birthDate', sortState)}
+														</span>
+													</button>
+												</Table.Th>
+												<Table.Th
+													aria-sort={getAriaSortValue('gender', sortState)}
+													className="sticky top-0 z-10 border-b border-[#d2e4eb] bg-[#edf5f8] text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-slate-600"
+												>
+													<button
+														type="button"
+														onClick={() => handleSortByColumn('gender')}
+														className={cn(
+															'flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-1 py-1 text-left transition-colors hover:text-slate-900',
+															sortState?.key === 'gender' && 'text-slate-900',
+														)}
+													>
+														<span>Sexo</span>
+														<span className="inline-flex h-4 w-4 items-center justify-center">
+															{getSortIcon('gender', sortState)}
+														</span>
+													</button>
+												</Table.Th>
+												<Table.Th
+													aria-sort={getAriaSortValue('goal', sortState)}
+													className="sticky top-0 z-10 border-b border-[#d2e4eb] bg-[#edf5f8] text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-slate-600"
+												>
+													<button
+														type="button"
+														onClick={() => handleSortByColumn('goal')}
+														className={cn(
+															'flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-1 py-1 text-left transition-colors hover:text-slate-900',
+															sortState?.key === 'goal' && 'text-slate-900',
+														)}
+													>
+														<span>Objetivos</span>
+														<span className="inline-flex h-4 w-4 items-center justify-center">
+															{getSortIcon('goal', sortState)}
+														</span>
+													</button>
+												</Table.Th>
+												<Table.Th
+													aria-sort={getAriaSortValue('activityLevel', sortState)}
+													className="sticky top-0 z-10 border-b border-[#d2e4eb] bg-[#edf5f8] text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-slate-600"
+												>
+													<button
+														type="button"
+														onClick={() => handleSortByColumn('activityLevel')}
+														className={cn(
+															'flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-1 py-1 text-left transition-colors hover:text-slate-900',
+															sortState?.key === 'activityLevel' && 'text-slate-900',
+														)}
+													>
+														<span>Atividade</span>
+														<span className="inline-flex h-4 w-4 items-center justify-center">
+															{getSortIcon('activityLevel', sortState)}
+														</span>
+													</button>
+												</Table.Th>
+												<Table.Th
+													aria-sort={getAriaSortValue('bmi', sortState)}
+													className="sticky top-0 z-10 border-b border-[#d2e4eb] bg-[#edf5f8] text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-slate-600"
+												>
+													<button
+														type="button"
+														onClick={() => handleSortByColumn('bmi')}
+														className={cn(
+															'flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-1 py-1 text-left transition-colors hover:text-slate-900',
+															sortState?.key === 'bmi' && 'text-slate-900',
+														)}
+													>
+														<span>IMC</span>
+														<span className="inline-flex h-4 w-4 items-center justify-center">
+															{getSortIcon('bmi', sortState)}
+														</span>
+													</button>
+												</Table.Th>
+												<Table.Th
+													aria-sort={getAriaSortValue('createdAt', sortState)}
+													className="sticky top-0 z-10 border-b border-[#d2e4eb] bg-[#edf5f8] text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-slate-600"
+												>
+													<button
+														type="button"
+														onClick={() => handleSortByColumn('createdAt')}
+														className={cn(
+															'flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-1 py-1 text-left transition-colors hover:text-slate-900',
+															sortState?.key === 'createdAt' && 'text-slate-900',
+														)}
+													>
+														<span>Criado em</span>
+														<span className="inline-flex h-4 w-4 items-center justify-center">
+															{getSortIcon('createdAt', sortState)}
+														</span>
+													</button>
+												</Table.Th>
+												<Table.Th className="sticky top-0 z-10 border-b border-[#d2e4eb] bg-[#edf5f8] text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-slate-600">
+													Acoes
+												</Table.Th>
+											</Table.Tr>
+										</Table.Thead>
 
-								<Table.Tbody>
-									{patients.map((patient) => (
-										<Table.Tr key={patient.id}>
-											<Table.Td>{patient.name}</Table.Td>
-											<Table.Td>{formatDate(patient.birthDate)}</Table.Td>
-											<Table.Td>{formatGender(patient.gender)}</Table.Td>
-											<Table.Td>{patient.goal || '-'}</Table.Td>
-											<Table.Td>{formatActivityLevel(patient.activityLevel)}</Table.Td>
-											<Table.Td>{patient.bmi.toFixed(1)}</Table.Td>
-											<Table.Td>{formatDate(patient.createdAt)}</Table.Td>
-										</Table.Tr>
-									))}
-								</Table.Tbody>
-							</Table>
+										<Table.Tbody>
+											{sortedPatients.map((patient) => {
+												const genderMeta = getGenderMeta(patient.gender)
+												const activityMeta = getActivityMeta(patient.activityLevel)
+												const bmiMeta = getBmiMeta(patient.bmi)
+												const goals = parseGoalTags(patient.goal)
+												const avatarLabel = patient.name.trim().charAt(0).toUpperCase() || '?'
+
+												return (
+													<Table.Tr
+														key={patient.id}
+														className="border-b border-slate-100 transition-colors hover:bg-[#f4fafc]"
+													>
+														<Table.Td>
+															<Group gap="sm" wrap="nowrap">
+																<Box className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,var(--color4)_0%,var(--color5)_100%)] text-sm font-semibold text-white shadow-[0_8px_14px_rgba(39,144,176,0.35)]">
+																	{avatarLabel}
+																</Box>
+
+																<Box className="min-w-0">
+																	<Text className="truncate text-sm font-semibold text-slate-900">
+																		{patient.name}
+																	</Text>
+																	<Text className="text-xs text-slate-500">
+																		ID #{patient.id}
+																	</Text>
+																</Box>
+															</Group>
+														</Table.Td>
+
+														<Table.Td className="text-sm font-medium text-slate-700">
+															{formatDate(patient.birthDate)}
+														</Table.Td>
+
+														<Table.Td>
+															<Box
+																component="span"
+																className={cn(
+																	'inline-flex items-center rounded-full px-2.5 py-1 text-[0.68rem] font-semibold',
+																	genderMeta.className,
+																)}
+															>
+																{genderMeta.label}
+															</Box>
+														</Table.Td>
+
+														<Table.Td className="max-w-[360px]">
+															{goals.length > 0 ? (
+																<Box className="flex flex-wrap gap-1.5">
+																	{goals.slice(0, 3).map((goalTag, index) => (
+																		<Box
+																			key={`${patient.id}-${goalTag}-${index}`}
+																			component="span"
+																			className="inline-flex items-center rounded-full border border-[#c6dbe3] bg-[#eaf3f7] px-2.5 py-1 text-[0.68rem] font-semibold text-slate-700"
+																		>
+																			{goalTag}
+																		</Box>
+																	))}
+
+																	{goals.length > 3 ? (
+																		<Box
+																			component="span"
+																			className="inline-flex items-center rounded-full border border-dashed border-slate-300 bg-white px-2.5 py-1 text-[0.68rem] font-semibold text-slate-600"
+																		>
+																			+{goals.length - 3}
+																		</Box>
+																	) : null}
+																</Box>
+															) : (
+																<Text className="text-sm text-slate-400">-</Text>
+															)}
+														</Table.Td>
+
+														<Table.Td>
+															<Box
+																component="span"
+																className={cn(
+																	'inline-flex items-center rounded-full px-2.5 py-1 text-[0.68rem] font-semibold',
+																	activityMeta.className,
+																)}
+															>
+																{activityMeta.label}
+															</Box>
+														</Table.Td>
+
+														<Table.Td>
+															<Box className="flex items-center gap-2">
+																<Text className="text-sm font-semibold text-slate-900">
+																	{patient.bmi.toFixed(1)}
+																</Text>
+																<Box
+																	component="span"
+																	className={cn(
+																		'inline-flex items-center rounded-full px-2 py-1 text-[0.64rem] font-semibold',
+																		bmiMeta.className,
+																	)}
+																>
+																	{bmiMeta.label}
+																</Box>
+															</Box>
+														</Table.Td>
+
+														<Table.Td className="text-sm font-medium text-slate-700">
+															{formatDate(patient.createdAt)}
+														</Table.Td>
+
+														<Table.Td>
+															<button
+																type="button"
+																onClick={() => navigate(`/patients/${patient.id}`)}
+																aria-label={`Visualizar paciente ${patient.name}`}
+																className="inline-flex items-center rounded-md border border-[#b7d4df] bg-white px-2.5 py-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-[#2b5f70] transition-colors hover:bg-[#eef7fb]"
+															>
+																Visualizar
+															</button>
+														</Table.Td>
+													</Table.Tr>
+												)
+											})}
+										</Table.Tbody>
+									</Table>
+								</Box>
+							</Box>
 						)}
 					</PageContentContainer>
 				</Box>

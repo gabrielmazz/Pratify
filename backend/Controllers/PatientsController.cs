@@ -50,6 +50,52 @@ public class PatientsController : ControllerBase
         return Ok(patients);
     }
 
+    // GET /api/patients/{id}
+    [Authorize]
+    [HttpGet("{id:int}")]
+    public async Task<ActionResult<PatientDetailsResponse>> Details(int id, CancellationToken cancellationToken)
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!int.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized(new { message = "Token invalido." });
+        }
+
+        var patient = await _context.Patients
+            .AsNoTracking()
+            .FirstOrDefaultAsync(currentPatient => currentPatient.UserId == userId && currentPatient.Id == id, cancellationToken);
+
+        if (patient is null)
+        {
+            return NotFound(new { message = "Paciente nao encontrado." });
+        }
+
+        return Ok(new PatientDetailsResponse
+        {
+            Id = patient.Id,
+            Name = patient.Name,
+            BirthDate = patient.BirthDate,
+            Gender = patient.Gender,
+            Weight = patient.Weight,
+            Height = patient.Height,
+            BMI = patient.BMI,
+            Goal = patient.Goal,
+            ActivityLevel = patient.ActivityLevel,
+            MedicalConditions = patient.MedicalConditions ?? new List<string>(),
+            ArmCircumference = patient.ArmCircumference,
+            WaistCircumference = patient.WaistCircumference,
+            HipCircumference = patient.HipCircumference,
+            ThighCircumference = patient.ThighCircumference,
+            SubscapularSkinfold = patient.SubscapularSkinfold,
+            AxillarySkinfold = patient.AxillarySkinfold,
+            SuprailiacSkinfold = patient.SuprailiacSkinfold,
+            AbdominalSkinfold = patient.AbdominalSkinfold,
+            BMR = patient.BMR,
+            TDEE = patient.TDEE,
+            CreatedAt = patient.CreatedAt
+        });
+    }
+
     // POST /api/patients
     [Authorize]
     [HttpPost]

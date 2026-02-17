@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { AddPatientPage } from '../pages/AddPatientPage'
 import { DashboardPage } from '../pages/DashboardPage'
 import { LoginPage } from '../pages/LoginPage'
+import { PatientDetailsPage } from '../pages/PatientDetailsPage'
 import { PatientsPage } from '../pages/PatientsPage'
 import { ProtectedRoute } from './ProtectedRoute'
 
@@ -15,6 +16,7 @@ export function AppRoutes() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/patients" element={<PatientsPage />} />
         <Route path="/patients/new" element={<AddPatientPage />} />
+        <Route path="/patients/:patientId" element={<PatientDetailsPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/login" replace />} />

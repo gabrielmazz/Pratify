@@ -4,8 +4,11 @@
 
 .label {
   margin-bottom: 0.35rem;
-  font-size: 0.875rem;
+  font-size: 0.68rem;
+  line-height: 1.2;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
   color: hsl(var(--foreground));
 }
 
