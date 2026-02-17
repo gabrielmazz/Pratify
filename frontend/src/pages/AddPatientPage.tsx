@@ -2,7 +2,6 @@ import { useMemo, useState, type FormEvent } from 'react'
 import {
 	Box,
 	Button,
-	Divider,
 	Grid,
 	Group,
 	MultiSelect,
@@ -633,21 +632,48 @@ export function AddPatientPage() {
 					<PageContentContainer
 						className="bg-[hsl(var(--card))]"
 						contentClassName="gap-6"
+						footer={(
+							<Group justify="flex-end" align="center" gap="md">
+								<Button
+									type="submit"
+									form="add-patient-form"
+									radius="md"
+									classNames={buttonClassNames}
+									loading={isSubmitting}
+								>
+									Salvar Paciente
+								</Button>
+
+								<Button
+									type="button"
+									radius="md"
+									variant="outline"
+									classNames={buttonCancelClassNames}
+									onClick={handleReset}
+									disabled={isSubmitting}
+								>
+									Limpar
+								</Button>
+							</Group>
+						)}
 					>
-						<Stack gap="md">
-							{/* Bloco introdutorio da funcionalidade */}
-							<Box className="rounded-2xl border border-[hsl(var(--border))] bg-[linear-gradient(140deg,rgba(148,186,101,0.08),rgba(39,144,176,0.08))] p-4">
-								<Text className="text-base font-semibold text-[hsl(var(--foreground))]">
-									Cadastro Inicial
-								</Text>
-								<Text className="text-sm text-[hsl(var(--muted-foreground))]">
-									Preencha os dados do paciente para iniciar o acompanhamento nutricional.
-								</Text>
-							</Box>
+							<Stack gap="md">
+								{/* Bloco introdutorio da funcionalidade */}
+								<Box className="rounded-[28px] border border-[#c8e4ef] bg-[linear-gradient(125deg,rgba(39,144,176,0.12)_0%,rgba(148,186,101,0.13)_52%,rgba(255,255,255,0.98)_100%)] p-4 sm:p-5">
+									<Box className="max-w-[720px]">
+										<Text className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-slate-600">
+											Cadastro inicial
+										</Text>
+										<Text className="mt-1 text-lg font-semibold text-slate-900 md:text-xl">
+											Preencha os dados do paciente
+										</Text>
+									</Box>
+								</Box>
 
 							{/* Formulario principal de cadastro */}
 							<Box
 								component="form"
+								id="add-patient-form"
 								onSubmit={handleSubmit}
 								className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4 md:p-6"
 							>
@@ -733,6 +759,7 @@ export function AddPatientPage() {
 											error={Boolean(fieldErrors.bmi)}
 											withAsterisk
 											readOnly
+											disabled
 											radius="md"
 											classNames={textInputClassNames}
 										/>
@@ -905,6 +932,7 @@ export function AddPatientPage() {
 											error={Boolean(fieldErrors.bmr)}
 											withAsterisk
 											readOnly
+											disabled
 											radius="md"
 											classNames={textInputClassNames}
 										/>
@@ -918,35 +946,12 @@ export function AddPatientPage() {
 											error={Boolean(fieldErrors.tdee)}
 											withAsterisk
 											readOnly
+											disabled
 											radius="md"
 											classNames={textInputClassNames}
 										/>
 									</Grid.Col>
 								</Grid>
-
-								<Divider my="lg" />
-
-								<Group grow>
-									<Button
-										type="submit"
-										radius="md"
-										classNames={buttonClassNames}
-										loading={isSubmitting}
-									>
-										Salvar Paciente
-									</Button>
-
-									<Button
-										type="button"
-										radius="md"
-										variant="outline"
-										classNames={buttonCancelClassNames}
-										onClick={handleReset}
-										disabled={isSubmitting}
-									>
-										Limpar
-									</Button>
-								</Group>
 							</Box>
 						</Stack>
 					</PageContentContainer>
