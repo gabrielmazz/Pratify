@@ -20,6 +20,35 @@
 
 /* -------------------------------------------------------------------------- */
 
+/* Botão neutro (uso geral para ações normais, como "Cancelar") */
+.neutralRoot {
+  height: 44px;
+  border: 1px solid #c7d8e1;
+  background-color: #ffffff;
+  color: #334155;
+  transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.neutralRoot:hover {
+  border-color: #b7ced9;
+  background-color: rgb(209, 209, 209);
+}
+
+.neutralRoot:active {
+  transform: translateY(1px);
+}
+
+.neutralRoot:disabled {
+  opacity: 0.65;
+}
+
+.neutralLabel {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* -------------------------------------------------------------------------- */
+
 /* Botões de cancelamento */
 .cancelButton {
   height: 44px;
