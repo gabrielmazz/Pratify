@@ -434,7 +434,7 @@ export function PatientDetailsPage() {
 						className="bg-[hsl(var(--card))]"
 						contentClassName="gap-5 overflow-auto"
 						footer={(
-							<Group justify="space-between" className="w-full">
+							<Group justify="end" className="w-full">
 								<Button
 									type="button"
 									radius="md"

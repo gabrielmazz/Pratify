@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type DragEvent } from 'react'
-import { ActionIcon, Box, Button, Divider, Fieldset, Grid, Group, LoadingOverlay, Modal, NumberInput, Select, Skeleton, Spoiler, Stack, Text, TextInput, Textarea } from '@mantine/core'
+import { ActionIcon, Box, Button, Divider, Fieldset, Grid, Group, LoadingOverlay, Modal, NumberInput, Select, Skeleton, Spoiler, Stack, Stepper, Text, TextInput, Textarea } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
+import { useDebouncedValue } from '@mantine/hooks'
 import { useNavigate, useParams } from 'react-router-dom'
-import { MdAdd, MdAutoAwesome, MdDeleteOutline, MdDragIndicator, MdPictureAsPdf } from 'react-icons/md'
+import { MdAdd, MdArrowBack, MdArrowForward, MdAutoAwesome, MdDeleteOutline, MdDragIndicator } from 'react-icons/md'
 
 import TextInputStyle from '../components/mantine/inputs/TextInput.module.css'
 import ButtonStyle from '../components/mantine/buttons/PrimaryButton.module.css'
@@ -10,6 +11,7 @@ import ButtonStyle from '../components/mantine/buttons/PrimaryButton.module.css'
 import { SideBar } from '../components/custom/sidebar/SideBar'
 import { PageInfo } from '../components/custom/pageInfo/PageInfo'
 import { PageContentContainer } from '../components/custom/pageContentContainer/PageContentContainer'
+import { MealPlanPdfCanvasPreview } from '../components/custom/pdf/MealPlanPdfCanvasPreview'
 
 import { useAuth } from '../auth/AuthContext'
 import { APP_SIDEBAR_ITEMS } from '../lib/sidebarItems'
@@ -80,6 +82,95 @@ type TacoFoodOption = {
 	label: string
 }
 
+type TacoFoodTableEntry = {
+	id: number
+	description: string
+	category: string
+	energy_kcal: unknown
+	carbohydrate_g: unknown
+	protein_g: unknown
+	lipid_g: unknown
+	fiber_g: unknown
+	cholesterol_mg: unknown
+	iron_mg: unknown
+	magnesium_mg: unknown
+	phosphorus_mg: unknown
+	sodium_mg: unknown
+	potassium_mg: unknown
+	saturated_g: unknown
+	monounsaturated_g: unknown
+	polyunsaturated_g: unknown
+	'18:1t_g': unknown
+	'18:2t_g': unknown
+	vitaminC_mg: unknown
+	thiamine_mg: unknown
+	riboflavin_mg: unknown
+	niacin_mg: unknown
+	pyridoxine_mg: unknown
+	retinol_mcg: unknown
+	rae_mcg: unknown
+	calcium_mg: unknown
+	manganese_mg: unknown
+	zinc_mg: unknown
+}
+
+type PlanPortionSummaryRow = {
+	groupName: string
+	portions: number
+}
+
+type PlanMicronutrientSummaryRow = {
+	nutrientLabel: string
+	offeredLabel: string
+	earLabel: string
+	rdaOrAiLabel: string
+	ulLabel: string
+	analysis: string
+}
+
+type PlanMacronutrientSummaryRow = {
+	nutrientLabel: string
+	offeredLabel: string
+	recommendedLabel: string
+	analysis: string
+}
+
+type PlanMealDistributionSummaryRow = {
+	scheduleLabel: string
+	mealLabel: string
+	proteinG: number
+	carbohydrateG: number
+	lipidG: number
+	caloriesKcal: number
+	quantityG: number
+}
+
+type PlanInfographicRow = {
+	nutrientLabel: string
+	value: number
+	unit: string
+	referenceValue: number | null
+	referenceLabel: string
+	referenceKind: 'minimum' | 'maximum' | 'none'
+	barPercentage: number
+	isPositive: boolean
+}
+
+type PlanNutritionPreviewData = {
+	portionRows: PlanPortionSummaryRow[]
+	totalPlanKcal: number
+	totalProteinG: number
+	totalCarbohydrateG: number
+	totalLipidG: number
+	totalQuantityG: number
+	totalMappedFoodsCount: number
+	estimatedItemsCount: number
+	micronutrientRows: PlanMicronutrientSummaryRow[]
+	macronutrientRows: PlanMacronutrientSummaryRow[]
+	mealDistributionRows: PlanMealDistributionSummaryRow[]
+	infographicRows: PlanInfographicRow[]
+}
+
 type AiChatResponse = {
 	model: string
 	content: string
@@ -106,6 +197,7 @@ type AiPlanningFocus = 'balanced' | 'clinical' | 'variety' | 'performance'
 type AiClinicalStrictness = 'high' | 'medium' | 'low'
 type AiPreparationProfile = 'quick' | 'balanced' | 'elaborated'
 type AiBudgetProfile = 'economic' | 'standard' | 'flexible'
+type AiRecipeFocus = 'adherence' | 'variety' | 'protein' | 'satiety'
 
 type AiGenerationSettingsState = {
 	modelOverride: string | null
@@ -119,11 +211,53 @@ type AiGenerationSettingsState = {
 	extraInstructions: string
 }
 
+type AiRecipeGenerationSettingsState = {
+	modelOverride: string | null
+	recipeFocus: AiRecipeFocus
+	preparationProfile: AiPreparationProfile
+	budgetProfile: AiBudgetProfile
+	recipeCount: number
+	maxIngredientsPerRecipe: number
+	preferredFoods: string
+	restrictedFoods: string
+	extraInstructions: string
+}
+
 type AiModelsApiResponse = {
 	model?: string
 	availableModels?: string[]
 	message?: string
 }
+
+type NutritionGuidanceState = {
+	hydrationGoalMl: number | null
+	mealRoutineGuidance: string
+	foodQualityGuidance: string
+	preparationGuidance: string
+	behaviorGuidance: string
+	symptomMonitoringGuidance: string
+	restrictionsGuidance: string
+	additionalGuidance: string
+}
+
+type NutritionGuidanceTextField = Exclude<keyof NutritionGuidanceState, 'hydrationGoalMl'>
+
+type ParsedAiNutritionGuidanceResult = {
+	guidance: Partial<NutritionGuidanceState>
+	highlights: string[]
+}
+
+type RecipeSuggestionState = {
+	id: string
+	recipeName: string
+	basedOnFoods: string
+	ingredients: string
+	preparationMethod: string
+	yieldInfo: string
+	portionQuantity: string
+}
+
+type RecipeSuggestionEditableField = Exclude<keyof RecipeSuggestionState, 'id'>
 
 type SummaryMetricCardProps = {
 	label: string
@@ -144,6 +278,10 @@ const DEFAULT_MEAL_GROUP_LABELS = [
 ]
 const AI_GENERATION_TOTAL_STEPS = 5
 const AI_GENERATION_INITIAL_STATUS = 'Preparando dados do paciente e do cardapio...'
+const AI_GUIDANCE_GENERATION_TOTAL_STEPS = 4
+const AI_GUIDANCE_GENERATION_INITIAL_STATUS = 'Preparando dados clinicos e rascunho de orientacoes...'
+const AI_RECIPE_GENERATION_TOTAL_STEPS = 4
+const AI_RECIPE_GENERATION_INITIAL_STATUS = 'Consolidando alimentos selecionados para montar receitas...'
 const AI_PLANNING_FOCUS_OPTIONS: Array<{ value: AiPlanningFocus; label: string }> = [
 	{ value: 'balanced', label: 'Plano balanceado' },
 	{ value: 'clinical', label: 'Prioridade clinica' },
@@ -165,6 +303,12 @@ const AI_BUDGET_PROFILE_OPTIONS: Array<{ value: AiBudgetProfile; label: string }
 	{ value: 'standard', label: 'Padrao' },
 	{ value: 'flexible', label: 'Flexivel' },
 ]
+const AI_RECIPE_FOCUS_OPTIONS: Array<{ value: AiRecipeFocus; label: string }> = [
+	{ value: 'adherence', label: 'Aderencia e praticidade' },
+	{ value: 'variety', label: 'Maior variedade de preparos' },
+	{ value: 'protein', label: 'Prioridade proteica' },
+	{ value: 'satiety', label: 'Foco em saciedade' },
+]
 const AI_GENERATION_DEFAULT_SETTINGS: AiGenerationSettingsState = {
 	modelOverride: null,
 	planningFocus: 'balanced',
@@ -176,6 +320,40 @@ const AI_GENERATION_DEFAULT_SETTINGS: AiGenerationSettingsState = {
 	restrictedFoods: '',
 	extraInstructions: '',
 }
+const AI_RECIPE_GENERATION_DEFAULT_SETTINGS: AiRecipeGenerationSettingsState = {
+	modelOverride: null,
+	recipeFocus: 'adherence',
+	preparationProfile: 'balanced',
+	budgetProfile: 'standard',
+	recipeCount: 4,
+	maxIngredientsPerRecipe: 7,
+	preferredFoods: '',
+	restrictedFoods: '',
+	extraInstructions: '',
+}
+const DATA_ENTRY_STEPS_TOTAL = 3
+const GENERATE_GUIDANCE_ERROR_MESSAGE = 'Nao foi possivel gerar orientacoes nutricionais com IA.'
+const GENERATE_RECIPE_SUGGESTIONS_ERROR_MESSAGE = 'Nao foi possivel gerar sugestoes de receitas com IA.'
+const NUTRITION_GUIDANCE_DEFAULT_STATE: NutritionGuidanceState = {
+	hydrationGoalMl: null,
+	mealRoutineGuidance: '',
+	foodQualityGuidance: '',
+	preparationGuidance: '',
+	behaviorGuidance: '',
+	symptomMonitoringGuidance: '',
+	restrictionsGuidance: '',
+	additionalGuidance: '',
+}
+const PLAN_PORTION_GROUP_LABELS = [
+	'Grupo 1 - Paes, massas, batata e mandioca',
+	'Grupo 2 - Verduras e legumes',
+	'Grupo 3 - Frutas',
+	'Grupo 4 - Leguminosas e oleaginosas',
+	'Grupo 5 - Carnes, ovos e pescados',
+	'Grupo 6 - Leite e derivados',
+	'Grupo 7 - Oleos e gorduras',
+	'Grupo 8 - Acucares e doces',
+]
 const GOAL_LABELS: Record<string, string> = {
 	'weight-loss': 'Emagrecimento',
 	'muscle-gain': 'Ganho muscular',
@@ -245,6 +423,741 @@ function createMealItem(): MealItemState {
 	}
 }
 
+function createRecipeSuggestion(): RecipeSuggestionState {
+	return {
+		id: generateId(),
+		recipeName: '',
+		basedOnFoods: '',
+		ingredients: '',
+		preparationMethod: '',
+		yieldInfo: '',
+		portionQuantity: '',
+	}
+}
+
+function parseTacoFoodEntries(source: unknown): TacoFoodTableEntry[] {
+	if (!Array.isArray(source)) {
+		return []
+	}
+
+	return source.flatMap((entry): TacoFoodTableEntry[] => {
+		if (typeof entry !== 'object' || entry === null) {
+			return []
+		}
+
+		const rawEntry = entry as Record<string, unknown>
+		const parsedId = typeof rawEntry.id === 'number' ? rawEntry.id : Number.NaN
+		const description = typeof rawEntry.description === 'string' ? rawEntry.description.trim() : ''
+
+		if (!Number.isFinite(parsedId) || description.length === 0) {
+			return []
+		}
+
+		return [{
+			id: parsedId,
+			description,
+			category: typeof rawEntry.category === 'string' ? rawEntry.category.trim() : '',
+			energy_kcal: rawEntry.energy_kcal,
+			carbohydrate_g: rawEntry.carbohydrate_g,
+			protein_g: rawEntry.protein_g,
+			lipid_g: rawEntry.lipid_g,
+			fiber_g: rawEntry.fiber_g,
+			cholesterol_mg: rawEntry.cholesterol_mg,
+			iron_mg: rawEntry.iron_mg,
+			magnesium_mg: rawEntry.magnesium_mg,
+			phosphorus_mg: rawEntry.phosphorus_mg,
+			sodium_mg: rawEntry.sodium_mg,
+			potassium_mg: rawEntry.potassium_mg,
+			saturated_g: rawEntry.saturated_g,
+			monounsaturated_g: rawEntry.monounsaturated_g,
+			polyunsaturated_g: rawEntry.polyunsaturated_g,
+			'18:1t_g': rawEntry['18:1t_g'],
+			'18:2t_g': rawEntry['18:2t_g'],
+			vitaminC_mg: rawEntry.vitaminC_mg,
+			thiamine_mg: rawEntry.thiamine_mg,
+			riboflavin_mg: rawEntry.riboflavin_mg,
+			niacin_mg: rawEntry.niacin_mg,
+			pyridoxine_mg: rawEntry.pyridoxine_mg,
+			retinol_mcg: rawEntry.retinol_mcg,
+			rae_mcg: rawEntry.rae_mcg,
+			calcium_mg: rawEntry.calcium_mg,
+			manganese_mg: rawEntry.manganese_mg,
+			zinc_mg: rawEntry.zinc_mg,
+		}]
+	})
+}
+
+function parsePlanNumericValue(value: unknown) {
+	if (typeof value === 'number' && Number.isFinite(value)) {
+		return value
+	}
+
+	if (typeof value !== 'string') {
+		return 0
+	}
+
+	const normalizedValue = value.trim().toLowerCase()
+	if (!normalizedValue || normalizedValue === 'na' || normalizedValue === 'nd' || normalizedValue === 'tr') {
+		return 0
+	}
+
+	const parsedValue = Number.parseFloat(normalizedValue.replace(',', '.'))
+	return Number.isFinite(parsedValue) ? parsedValue : 0
+}
+
+function parsePositiveAmountFromText(value: string) {
+	const normalizedValue = value.trim().replace(',', '.')
+	if (!normalizedValue) {
+		return null
+	}
+
+	const parsedValue = Number.parseFloat(normalizedValue)
+	if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
+		return null
+	}
+
+	return parsedValue
+}
+
+function estimateAmountInGrams(quantity: string, measure: string) {
+	const quantityValue = parsePositiveAmountFromText(quantity) ?? 1
+	const normalizedMeasure = normalizeSearchText(measure)
+	if (!normalizedMeasure) {
+		return quantityValue * 100
+	}
+
+	const measureTokens = normalizedMeasure.split(' ').filter((token) => token.length > 0)
+	const hasToken = (token: string) => measureTokens.includes(token)
+
+	if (hasToken('kg') || measureTokens.includes('quilograma') || measureTokens.includes('quilogramas')) {
+		return quantityValue * 1000
+	}
+
+	if (hasToken('mg') || measureTokens.includes('miligrama') || measureTokens.includes('miligramas')) {
+		return quantityValue / 1000
+	}
+
+	if (hasToken('g') || measureTokens.includes('grama') || measureTokens.includes('gramas')) {
+		return quantityValue
+	}
+
+	if (hasToken('ml') || measureTokens.includes('mililitro') || measureTokens.includes('mililitros')) {
+		return quantityValue
+	}
+
+	if (hasToken('l') || measureTokens.includes('litro') || measureTokens.includes('litros')) {
+		return quantityValue * 1000
+	}
+
+	if (measureTokens.includes('colher') && measureTokens.includes('sopa')) {
+		return quantityValue * 15
+	}
+
+	if (measureTokens.includes('colher') && (measureTokens.includes('cha') || measureTokens.includes('te'))) {
+		return quantityValue * 5
+	}
+
+	if (measureTokens.includes('xicara') || measureTokens.includes('xic') || measureTokens.includes('copo')) {
+		return quantityValue * 200
+	}
+
+	if (measureTokens.includes('fatia') || measureTokens.includes('fatias')) {
+		return quantityValue * 30
+	}
+
+	if (measureTokens.includes('unidade') || measureTokens.includes('unidades') || hasToken('un')) {
+		return quantityValue * 80
+	}
+
+	if (measureTokens.includes('porcao') || measureTokens.includes('porcoes')) {
+		return quantityValue * 100
+	}
+
+	return quantityValue * 100
+}
+
+function resolvePlanPortionGroupIndex(foodEntry: TacoFoodTableEntry) {
+	const normalizedCategory = normalizeSearchText(foodEntry.category)
+	const normalizedDescription = normalizeSearchText(foodEntry.description)
+
+	if (normalizedCategory.includes('produtos acucarados')) {
+		return 7
+	}
+
+	if (normalizedCategory.includes('gorduras e oleos')) {
+		return 6
+	}
+
+	if (normalizedCategory.includes('leite e derivados')) {
+		return 5
+	}
+
+	if (
+		normalizedCategory.includes('carnes e derivados') ||
+		normalizedCategory.includes('ovos e derivados') ||
+		normalizedCategory.includes('pescados e frutos do mar')
+	) {
+		return 4
+	}
+
+	if (
+		normalizedCategory.includes('leguminosas e derivados') ||
+		normalizedCategory.includes('nozes e sementes')
+	) {
+		return 3
+	}
+
+	if (normalizedCategory.includes('frutas e derivados')) {
+		return 2
+	}
+
+	if (normalizedCategory.includes('verduras hortalicas e derivados')) {
+		return 1
+	}
+
+	if (normalizedCategory.includes('cereais e derivados')) {
+		return 0
+	}
+
+	if (normalizedDescription.includes('acucar') || normalizedDescription.includes('doce') || normalizedDescription.includes('chocolate')) {
+		return 7
+	}
+
+	if (
+		normalizedDescription.includes('oleo') ||
+		normalizedDescription.includes('azeite') ||
+		normalizedDescription.includes('manteiga') ||
+		normalizedDescription.includes('margarina')
+	) {
+		return 6
+	}
+
+	if (
+		normalizedDescription.includes('leite') ||
+		normalizedDescription.includes('iogurte') ||
+		normalizedDescription.includes('queijo')
+	) {
+		return 5
+	}
+
+	if (
+		normalizedDescription.includes('frango') ||
+		normalizedDescription.includes('carne') ||
+		normalizedDescription.includes('peixe') ||
+		normalizedDescription.includes('ovo')
+	) {
+		return 4
+	}
+
+	if (
+		normalizedDescription.includes('feijao') ||
+		normalizedDescription.includes('lentilha') ||
+		normalizedDescription.includes('grao de bico') ||
+		normalizedDescription.includes('castanha') ||
+		normalizedDescription.includes('amendoim')
+	) {
+		return 3
+	}
+
+	if (normalizedDescription.includes('fruta')) {
+		return 2
+	}
+
+	if (
+		normalizedDescription.includes('alface') ||
+		normalizedDescription.includes('couve') ||
+		normalizedDescription.includes('brocolis') ||
+		normalizedDescription.includes('cenoura') ||
+		normalizedDescription.includes('tomate')
+	) {
+		return 1
+	}
+
+	if (
+		normalizedDescription.includes('pao') ||
+		normalizedDescription.includes('arroz') ||
+		normalizedDescription.includes('macarrao') ||
+		normalizedDescription.includes('massa') ||
+		normalizedDescription.includes('batata') ||
+		normalizedDescription.includes('mandioca')
+	) {
+		return 0
+	}
+
+	return null
+}
+
+function resolveDistributionSchedule(groupName: string, groupIndex: number) {
+	const normalizedGroupName = normalizeSearchText(groupName)
+
+	if (normalizedGroupName.includes('cafe da manha')) {
+		return '07:00'
+	}
+
+	if (normalizedGroupName.includes('lanche da manha') || normalizedGroupName.includes('colacao')) {
+		return '10:00'
+	}
+
+	if (normalizedGroupName.includes('almoco')) {
+		return '12:30'
+	}
+
+	if (normalizedGroupName.includes('lanche da tarde')) {
+		return '16:00'
+	}
+
+	if (normalizedGroupName.includes('jantar')) {
+		return '19:30'
+	}
+
+	if (normalizedGroupName.includes('ceia')) {
+		return '22:00'
+	}
+
+	const fallbackHour = Math.min(7 + groupIndex * 3, 22)
+	return `${String(fallbackHour).padStart(2, '0')}:00`
+}
+
+function formatPlanPreviewNumber(value: number, decimals: number) {
+	return value.toLocaleString('pt-BR', {
+		minimumFractionDigits: decimals,
+		maximumFractionDigits: decimals,
+	})
+}
+
+function formatPlanReferenceValue(value: number | null, decimals: number) {
+	if (value === null) {
+		return 'ND'
+	}
+
+	return formatPlanPreviewNumber(value, decimals)
+}
+
+function classifyMicronutrientAdequacy(value: number, ear: number | null, rdaOrAi: number | null, ul: number | null) {
+	if (ul !== null && value > ul) {
+		return 'Acima do limite'
+	}
+
+	if (rdaOrAi !== null && value >= rdaOrAi) {
+		return 'Adequado'
+	}
+
+	if (ear !== null && value >= ear) {
+		return 'Parcial'
+	}
+
+	if (value > 0) {
+		return 'Parcial'
+	}
+
+	return 'Baixo'
+}
+
+function classifyRangeAdequacy(value: number, minimum: number, maximum: number) {
+	if (value < minimum) {
+		return 'Abaixo'
+	}
+
+	if (value > maximum) {
+		return 'Acima'
+	}
+
+	return 'Adequado'
+}
+
+function classifyThresholdAdequacy(value: number, minimum: number) {
+	return value >= minimum ? 'Adequado' : 'Abaixo'
+}
+
+function clampPlanPercentage(value: number) {
+	if (!Number.isFinite(value) || value <= 0) {
+		return 0
+	}
+
+	return Math.min(Math.max(value, 0), 100)
+}
+
+function buildPlanInfographicRow(
+	nutrientLabel: string,
+	value: number,
+	unit: string,
+	referenceValue: number | null,
+	referenceKind: 'minimum' | 'maximum' | 'none',
+): PlanInfographicRow {
+	const safeValue = Number.isFinite(value) ? value : 0
+	if (referenceValue === null || referenceKind === 'none' || !Number.isFinite(referenceValue) || referenceValue <= 0) {
+		return {
+			nutrientLabel,
+			value: safeValue,
+			unit,
+			referenceValue: null,
+			referenceLabel: 'ND',
+			referenceKind: 'none',
+			barPercentage: 0,
+			isPositive: false,
+		}
+	}
+
+	const ratio = safeValue / referenceValue
+	const barPercentage = clampPlanPercentage(ratio * 100)
+	const isPositive = referenceKind === 'minimum'
+		? safeValue >= referenceValue
+		: safeValue <= referenceValue
+	const comparator = referenceKind === 'minimum' ? '>=' : '<='
+	const decimals = unit === 'mcg'
+		? 0
+		: unit === 'mg'
+			? (referenceValue < 10 ? 1 : 0)
+			: 1
+
+	return {
+		nutrientLabel,
+		value: safeValue,
+		unit,
+		referenceValue,
+		referenceLabel: `${comparator} ${formatPlanPreviewNumber(referenceValue, decimals)} ${unit}`,
+		referenceKind,
+		barPercentage,
+		isPositive,
+	}
+}
+
+function buildPlanNutritionPreviewData(
+	mealGroups: MealGroupState[],
+	tacoFoodById: Map<string, TacoFoodTableEntry>,
+	patientGender: string,
+): PlanNutritionPreviewData {
+	const isFemale = normalizeSearchText(patientGender).includes('female')
+	const portionTotals = PLAN_PORTION_GROUP_LABELS.map(() => 0)
+	const mealDistributionAccumulator = mealGroups.map(() => ({
+		proteinG: 0,
+		carbohydrateG: 0,
+		lipidG: 0,
+		caloriesKcal: 0,
+		quantityG: 0,
+	}))
+
+	let totalPlanKcal = 0
+	let totalCarbohydrateG = 0
+	let totalProteinG = 0
+	let totalLipidG = 0
+	let totalQuantityG = 0
+	let totalFiberG = 0
+	let totalCholesterolMg = 0
+	let totalIronMg = 0
+	let totalMagnesiumMg = 0
+	let totalPhosphorusMg = 0
+	let totalSodiumMg = 0
+	let totalPotassiumMg = 0
+	let totalSaturatedG = 0
+	let totalMonounsaturatedG = 0
+	let totalPolyunsaturatedG = 0
+	let totalTransG = 0
+	let totalVitaminCMg = 0
+	let totalThiamineMg = 0
+	let totalRiboflavinMg = 0
+	let totalNiacinMg = 0
+	let totalPyridoxineMg = 0
+	let totalVitaminAMcg = 0
+	let totalCalciumMg = 0
+	let totalManganeseMg = 0
+	let totalZincMg = 0
+	let totalMappedFoodsCount = 0
+	let estimatedItemsCount = 0
+
+	for (const [groupIndex, group] of mealGroups.entries()) {
+		for (const item of group.items) {
+			if (!item.foodId) {
+				continue
+			}
+
+			const tacoFood = tacoFoodById.get(item.foodId)
+			if (!tacoFood) {
+				continue
+			}
+
+			totalMappedFoodsCount += 1
+
+			const estimatedPortion = parsePositiveAmountFromText(item.quantity) ?? 1
+			const portionGroupIndex = resolvePlanPortionGroupIndex(tacoFood)
+			if (portionGroupIndex !== null) {
+				portionTotals[portionGroupIndex] += estimatedPortion
+			}
+
+			const estimatedGrams = estimateAmountInGrams(item.quantity, item.measure)
+			const conversionFactor = estimatedGrams / 100
+			if (!Number.isFinite(conversionFactor) || conversionFactor <= 0) {
+				continue
+			}
+
+			estimatedItemsCount += 1
+
+			const retinolMcg = parsePlanNumericValue(tacoFood.retinol_mcg)
+			const raeMcg = parsePlanNumericValue(tacoFood.rae_mcg)
+			const itemCaloriesKcal = parsePlanNumericValue(tacoFood.energy_kcal) * conversionFactor
+			const itemCarbohydrateG = parsePlanNumericValue(tacoFood.carbohydrate_g) * conversionFactor
+			const itemProteinG = parsePlanNumericValue(tacoFood.protein_g) * conversionFactor
+			const itemLipidG = parsePlanNumericValue(tacoFood.lipid_g) * conversionFactor
+
+			totalPlanKcal += itemCaloriesKcal
+			totalCarbohydrateG += itemCarbohydrateG
+			totalProteinG += itemProteinG
+			totalLipidG += itemLipidG
+			totalQuantityG += estimatedGrams
+			totalFiberG += parsePlanNumericValue(tacoFood.fiber_g) * conversionFactor
+			totalCholesterolMg += parsePlanNumericValue(tacoFood.cholesterol_mg) * conversionFactor
+			totalIronMg += parsePlanNumericValue(tacoFood.iron_mg) * conversionFactor
+			totalMagnesiumMg += parsePlanNumericValue(tacoFood.magnesium_mg) * conversionFactor
+			totalPhosphorusMg += parsePlanNumericValue(tacoFood.phosphorus_mg) * conversionFactor
+			totalSodiumMg += parsePlanNumericValue(tacoFood.sodium_mg) * conversionFactor
+			totalPotassiumMg += parsePlanNumericValue(tacoFood.potassium_mg) * conversionFactor
+			totalSaturatedG += parsePlanNumericValue(tacoFood.saturated_g) * conversionFactor
+			totalMonounsaturatedG += parsePlanNumericValue(tacoFood.monounsaturated_g) * conversionFactor
+			totalPolyunsaturatedG += parsePlanNumericValue(tacoFood.polyunsaturated_g) * conversionFactor
+			totalTransG += (parsePlanNumericValue(tacoFood['18:1t_g']) + parsePlanNumericValue(tacoFood['18:2t_g'])) * conversionFactor
+			totalVitaminCMg += parsePlanNumericValue(tacoFood.vitaminC_mg) * conversionFactor
+			totalThiamineMg += parsePlanNumericValue(tacoFood.thiamine_mg) * conversionFactor
+			totalRiboflavinMg += parsePlanNumericValue(tacoFood.riboflavin_mg) * conversionFactor
+			totalNiacinMg += parsePlanNumericValue(tacoFood.niacin_mg) * conversionFactor
+			totalPyridoxineMg += parsePlanNumericValue(tacoFood.pyridoxine_mg) * conversionFactor
+			totalVitaminAMcg += Math.max(raeMcg, retinolMcg) * conversionFactor
+			totalCalciumMg += parsePlanNumericValue(tacoFood.calcium_mg) * conversionFactor
+			totalManganeseMg += parsePlanNumericValue(tacoFood.manganese_mg) * conversionFactor
+			totalZincMg += parsePlanNumericValue(tacoFood.zinc_mg) * conversionFactor
+
+			const distributionAccumulator = mealDistributionAccumulator[groupIndex]
+			if (distributionAccumulator) {
+				distributionAccumulator.caloriesKcal += itemCaloriesKcal
+				distributionAccumulator.carbohydrateG += itemCarbohydrateG
+				distributionAccumulator.proteinG += itemProteinG
+				distributionAccumulator.lipidG += itemLipidG
+				distributionAccumulator.quantityG += estimatedGrams
+			}
+		}
+	}
+
+	const micronutrientReferences = {
+		vitaminC: {
+			ear: isFemale ? 60 : 75,
+			rdaOrAi: isFemale ? 75 : 90,
+			ul: 2000,
+			decimals: 0,
+			unit: 'mg',
+		},
+		thiamine: {
+			ear: isFemale ? 0.9 : 1.0,
+			rdaOrAi: isFemale ? 1.1 : 1.2,
+			ul: null,
+			decimals: 1,
+			unit: 'mg',
+		},
+		vitaminA: {
+			ear: isFemale ? 500 : 625,
+			rdaOrAi: isFemale ? 700 : 900,
+			ul: 3000,
+			decimals: 0,
+			unit: 'mcg',
+		},
+		calcium: {
+			ear: 800,
+			rdaOrAi: 1000,
+			ul: 2500,
+			decimals: 0,
+			unit: 'mg',
+		},
+		manganese: {
+			ear: null,
+			rdaOrAi: isFemale ? 1.8 : 2.3,
+			ul: 11,
+			decimals: 1,
+			unit: 'mg',
+		},
+		zinc: {
+			ear: isFemale ? 6.8 : 9.4,
+			rdaOrAi: isFemale ? 8 : 11,
+			ul: 40,
+			decimals: 1,
+			unit: 'mg',
+		},
+	}
+
+	const micronutrientRows: PlanMicronutrientSummaryRow[] = [
+		{
+			nutrientLabel: `Vitamina C (${micronutrientReferences.vitaminC.unit})`,
+			offeredLabel: `${formatPlanPreviewNumber(totalVitaminCMg, 1)} ${micronutrientReferences.vitaminC.unit}`,
+			earLabel: formatPlanReferenceValue(micronutrientReferences.vitaminC.ear, micronutrientReferences.vitaminC.decimals),
+			rdaOrAiLabel: formatPlanReferenceValue(micronutrientReferences.vitaminC.rdaOrAi, micronutrientReferences.vitaminC.decimals),
+			ulLabel: formatPlanReferenceValue(micronutrientReferences.vitaminC.ul, micronutrientReferences.vitaminC.decimals),
+			analysis: classifyMicronutrientAdequacy(
+				totalVitaminCMg,
+				micronutrientReferences.vitaminC.ear,
+				micronutrientReferences.vitaminC.rdaOrAi,
+				micronutrientReferences.vitaminC.ul,
+			),
+		},
+		{
+			nutrientLabel: `Vitamina B1 (${micronutrientReferences.thiamine.unit})`,
+			offeredLabel: `${formatPlanPreviewNumber(totalThiamineMg, 2)} ${micronutrientReferences.thiamine.unit}`,
+			earLabel: formatPlanReferenceValue(micronutrientReferences.thiamine.ear, micronutrientReferences.thiamine.decimals),
+			rdaOrAiLabel: formatPlanReferenceValue(micronutrientReferences.thiamine.rdaOrAi, micronutrientReferences.thiamine.decimals),
+			ulLabel: formatPlanReferenceValue(micronutrientReferences.thiamine.ul, micronutrientReferences.thiamine.decimals),
+			analysis: classifyMicronutrientAdequacy(
+				totalThiamineMg,
+				micronutrientReferences.thiamine.ear,
+				micronutrientReferences.thiamine.rdaOrAi,
+				micronutrientReferences.thiamine.ul,
+			),
+		},
+		{
+			nutrientLabel: `Vitamina A (${micronutrientReferences.vitaminA.unit})`,
+			offeredLabel: `${formatPlanPreviewNumber(totalVitaminAMcg, 0)} ${micronutrientReferences.vitaminA.unit}`,
+			earLabel: formatPlanReferenceValue(micronutrientReferences.vitaminA.ear, micronutrientReferences.vitaminA.decimals),
+			rdaOrAiLabel: formatPlanReferenceValue(micronutrientReferences.vitaminA.rdaOrAi, micronutrientReferences.vitaminA.decimals),
+			ulLabel: formatPlanReferenceValue(micronutrientReferences.vitaminA.ul, micronutrientReferences.vitaminA.decimals),
+			analysis: classifyMicronutrientAdequacy(
+				totalVitaminAMcg,
+				micronutrientReferences.vitaminA.ear,
+				micronutrientReferences.vitaminA.rdaOrAi,
+				micronutrientReferences.vitaminA.ul,
+			),
+		},
+		{
+			nutrientLabel: `Calcio (${micronutrientReferences.calcium.unit})`,
+			offeredLabel: `${formatPlanPreviewNumber(totalCalciumMg, 0)} ${micronutrientReferences.calcium.unit}`,
+			earLabel: formatPlanReferenceValue(micronutrientReferences.calcium.ear, micronutrientReferences.calcium.decimals),
+			rdaOrAiLabel: formatPlanReferenceValue(micronutrientReferences.calcium.rdaOrAi, micronutrientReferences.calcium.decimals),
+			ulLabel: formatPlanReferenceValue(micronutrientReferences.calcium.ul, micronutrientReferences.calcium.decimals),
+			analysis: classifyMicronutrientAdequacy(
+				totalCalciumMg,
+				micronutrientReferences.calcium.ear,
+				micronutrientReferences.calcium.rdaOrAi,
+				micronutrientReferences.calcium.ul,
+			),
+		},
+		{
+			nutrientLabel: `Manganes (${micronutrientReferences.manganese.unit})`,
+			offeredLabel: `${formatPlanPreviewNumber(totalManganeseMg, 2)} ${micronutrientReferences.manganese.unit}`,
+			earLabel: formatPlanReferenceValue(micronutrientReferences.manganese.ear, micronutrientReferences.manganese.decimals),
+			rdaOrAiLabel: formatPlanReferenceValue(micronutrientReferences.manganese.rdaOrAi, micronutrientReferences.manganese.decimals),
+			ulLabel: formatPlanReferenceValue(micronutrientReferences.manganese.ul, micronutrientReferences.manganese.decimals),
+			analysis: classifyMicronutrientAdequacy(
+				totalManganeseMg,
+				micronutrientReferences.manganese.ear,
+				micronutrientReferences.manganese.rdaOrAi,
+				micronutrientReferences.manganese.ul,
+			),
+		},
+		{
+			nutrientLabel: `Zinco (${micronutrientReferences.zinc.unit})`,
+			offeredLabel: `${formatPlanPreviewNumber(totalZincMg, 2)} ${micronutrientReferences.zinc.unit}`,
+			earLabel: formatPlanReferenceValue(micronutrientReferences.zinc.ear, micronutrientReferences.zinc.decimals),
+			rdaOrAiLabel: formatPlanReferenceValue(micronutrientReferences.zinc.rdaOrAi, micronutrientReferences.zinc.decimals),
+			ulLabel: formatPlanReferenceValue(micronutrientReferences.zinc.ul, micronutrientReferences.zinc.decimals),
+			analysis: classifyMicronutrientAdequacy(
+				totalZincMg,
+				micronutrientReferences.zinc.ear,
+				micronutrientReferences.zinc.rdaOrAi,
+				micronutrientReferences.zinc.ul,
+			),
+		},
+	]
+
+	const totalMacroEnergyKcal = (totalCarbohydrateG * 4) + (totalProteinG * 4) + (totalLipidG * 9)
+	const hasMacroEnergyData = totalMacroEnergyKcal > 0
+	const carbohydratePercentage = hasMacroEnergyData ? (totalCarbohydrateG * 4 * 100) / totalMacroEnergyKcal : 0
+	const proteinPercentage = hasMacroEnergyData ? (totalProteinG * 4 * 100) / totalMacroEnergyKcal : 0
+	const lipidPercentage = hasMacroEnergyData ? (totalLipidG * 9 * 100) / totalMacroEnergyKcal : 0
+
+	const macronutrientRows: PlanMacronutrientSummaryRow[] = [
+		{
+			nutrientLabel: 'Fibras',
+			offeredLabel: `${formatPlanPreviewNumber(totalFiberG, 1)} g`,
+			recommendedLabel: 'AI >= 25 g',
+			analysis: classifyThresholdAdequacy(totalFiberG, 25),
+		},
+		{
+			nutrientLabel: 'CHO (%)',
+			offeredLabel: `${formatPlanPreviewNumber(carbohydratePercentage, 1)}% | ${formatPlanPreviewNumber(totalCarbohydrateG, 1)} g`,
+			recommendedLabel: '45 - 65',
+			analysis: hasMacroEnergyData ? classifyRangeAdequacy(carbohydratePercentage, 45, 65) : 'Sem dados',
+		},
+		{
+			nutrientLabel: 'PTN (%)',
+			offeredLabel: `${formatPlanPreviewNumber(proteinPercentage, 1)}% | ${formatPlanPreviewNumber(totalProteinG, 1)} g`,
+			recommendedLabel: '10 - 35',
+			analysis: hasMacroEnergyData ? classifyRangeAdequacy(proteinPercentage, 10, 35) : 'Sem dados',
+		},
+		{
+			nutrientLabel: 'LIP (%)',
+			offeredLabel: `${formatPlanPreviewNumber(lipidPercentage, 1)}% | ${formatPlanPreviewNumber(totalLipidG, 1)} g`,
+			recommendedLabel: '20 - 35',
+			analysis: hasMacroEnergyData ? classifyRangeAdequacy(lipidPercentage, 20, 35) : 'Sem dados',
+		},
+	]
+
+	const mealDistributionRows: PlanMealDistributionSummaryRow[] = mealGroups.map((group, groupIndex) => {
+		const groupName = normalizeTextField(group.name) || `Refeicao ${groupIndex + 1}`
+		const distributionTotals = mealDistributionAccumulator[groupIndex] ?? {
+			proteinG: 0,
+			carbohydrateG: 0,
+			lipidG: 0,
+			caloriesKcal: 0,
+			quantityG: 0,
+		}
+
+		return {
+			scheduleLabel: resolveDistributionSchedule(groupName, groupIndex),
+			mealLabel: groupName,
+			proteinG: distributionTotals.proteinG,
+			carbohydrateG: distributionTotals.carbohydrateG,
+			lipidG: distributionTotals.lipidG,
+			caloriesKcal: distributionTotals.caloriesKcal,
+			quantityG: distributionTotals.quantityG,
+		}
+	})
+
+	const infographicRows: PlanInfographicRow[] = [
+		buildPlanInfographicRow('Calcio', totalCalciumMg, 'mg', 1000, 'minimum'),
+		buildPlanInfographicRow('Colesterol', totalCholesterolMg, 'mg', 300, 'maximum'),
+		buildPlanInfographicRow('Ferro', totalIronMg, 'mg', isFemale ? 18 : 8, 'minimum'),
+		buildPlanInfographicRow('Fibra alimentar', totalFiberG, 'g', 25, 'minimum'),
+		buildPlanInfographicRow('Fosforo (P)', totalPhosphorusMg, 'mg', 700, 'minimum'),
+		buildPlanInfographicRow('G. monoinsaturada', totalMonounsaturatedG, 'g', null, 'none'),
+		buildPlanInfographicRow('G. poli-insaturada', totalPolyunsaturatedG, 'g', null, 'none'),
+		buildPlanInfographicRow('G. saturada', totalSaturatedG, 'g', 22, 'maximum'),
+		buildPlanInfographicRow('G. trans', totalTransG, 'g', 2, 'maximum'),
+		buildPlanInfographicRow('Magnesio', totalMagnesiumMg, 'mg', isFemale ? 320 : 400, 'minimum'),
+		buildPlanInfographicRow('Manganes', totalManganeseMg, 'mg', isFemale ? 1.8 : 2.3, 'minimum'),
+		buildPlanInfographicRow('Potassio', totalPotassiumMg, 'mg', 4700, 'minimum'),
+		buildPlanInfographicRow('Sodio', totalSodiumMg, 'mg', 2300, 'maximum'),
+		buildPlanInfographicRow('Vitamina A (Retinol)', totalVitaminAMcg, 'mcg', isFemale ? 700 : 900, 'minimum'),
+		buildPlanInfographicRow('Vitamina B1 (Tiamina)', totalThiamineMg, 'mg', isFemale ? 1.1 : 1.2, 'minimum'),
+		buildPlanInfographicRow('Vitamina B2 (Riboflavina)', totalRiboflavinMg, 'mg', isFemale ? 1.1 : 1.3, 'minimum'),
+		buildPlanInfographicRow('Vitamina B3 (Niacina)', totalNiacinMg, 'mg', isFemale ? 14 : 16, 'minimum'),
+		buildPlanInfographicRow('Vitamina B6 (Piridoxina)', totalPyridoxineMg, 'mg', isFemale ? 1.3 : 1.3, 'minimum'),
+		buildPlanInfographicRow('Vitamina C', totalVitaminCMg, 'mg', isFemale ? 75 : 90, 'minimum'),
+		buildPlanInfographicRow('Zinco', totalZincMg, 'mg', isFemale ? 8 : 11, 'minimum'),
+	]
+
+	return {
+		portionRows: PLAN_PORTION_GROUP_LABELS.map((groupName, groupIndex) => ({
+			groupName,
+			portions: portionTotals[groupIndex],
+		})),
+		totalPlanKcal,
+		totalProteinG,
+		totalCarbohydrateG,
+		totalLipidG,
+		totalQuantityG,
+		totalMappedFoodsCount,
+		estimatedItemsCount,
+		micronutrientRows,
+		macronutrientRows,
+		mealDistributionRows,
+		infographicRows,
+	}
+}
+
 // CARREGAMENTO DA TACO:
 // Converte estrutura bruta do JSON em opcoes de Select (value/label) ordenadas.
 function buildTacoFoodOptions(source: unknown): TacoFoodOption[] {
@@ -296,6 +1209,19 @@ function normalizeTextField(value: unknown) {
 	}
 
 	return value.trim().replace(/\s+/g, ' ')
+}
+
+function normalizeMultilineTextField(value: unknown) {
+	if (typeof value !== 'string') {
+		return ''
+	}
+
+	return value
+		.replace(/\r/g, '')
+		.split('\n')
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0)
+		.join('\n')
 }
 
 // PARSING DE RETORNO DA IA:
@@ -380,6 +1306,425 @@ function parseAiGeneratedMealGroups(content: string): AiGeneratedMealGroup[] {
 	} catch {
 		return []
 	}
+}
+
+function parseGuidanceHydrationGoal(value: unknown) {
+	if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+		return Math.min(Math.max(Math.round(value), 1200), 7000)
+	}
+
+	if (typeof value === 'string') {
+		const parsedValue = Number.parseInt(value.trim(), 10)
+		if (Number.isFinite(parsedValue) && parsedValue > 0) {
+			return Math.min(Math.max(Math.round(parsedValue), 1200), 7000)
+		}
+	}
+
+	return null
+}
+
+function parseAiGeneratedNutritionGuidance(content: string): ParsedAiNutritionGuidanceResult | null {
+	const jsonPayload = extractJsonPayloadFromText(content)
+	if (!jsonPayload) {
+		return null
+	}
+
+	try {
+		const parsedPayload = JSON.parse(jsonPayload) as unknown
+		if (typeof parsedPayload !== 'object' || parsedPayload === null) {
+			return null
+		}
+
+		const rawPayload = parsedPayload as Record<string, unknown>
+		const guidance: Partial<NutritionGuidanceState> = {}
+		const hydrationGoalMl = parseGuidanceHydrationGoal(rawPayload.hydrationGoalMl)
+		if (hydrationGoalMl !== null) {
+			guidance.hydrationGoalMl = hydrationGoalMl
+		}
+
+		const textFields: NutritionGuidanceTextField[] = [
+			'mealRoutineGuidance',
+			'foodQualityGuidance',
+			'preparationGuidance',
+			'behaviorGuidance',
+			'symptomMonitoringGuidance',
+			'restrictionsGuidance',
+			'additionalGuidance',
+		]
+
+		for (const field of textFields) {
+			const normalizedValue = normalizeTextField(rawPayload[field])
+			if (normalizedValue.length > 0) {
+				guidance[field] = normalizedValue
+			}
+		}
+
+		const highlights = Array.isArray(rawPayload.orientationHighlights)
+			? rawPayload.orientationHighlights
+				.filter((value): value is string => typeof value === 'string')
+				.map((value) => normalizeTextField(value))
+				.filter((value) => value.length > 0)
+				.slice(0, 8)
+			: []
+
+		if (Object.keys(guidance).length === 0 && highlights.length === 0) {
+			return null
+		}
+
+		return {
+			guidance,
+			highlights,
+		}
+	} catch {
+		return null
+	}
+}
+
+function summarizeGuidanceDraft(guidance: NutritionGuidanceState) {
+	const lines: string[] = []
+
+	if (guidance.hydrationGoalMl !== null) {
+		lines.push(`- Meta de hidratacao atual: ${guidance.hydrationGoalMl} ml/dia.`)
+	}
+
+	const fieldLabels: Record<NutritionGuidanceTextField, string> = {
+		mealRoutineGuidance: 'Rotina das refeicoes',
+		foodQualityGuidance: 'Qualidade alimentar',
+		preparationGuidance: 'Preparo/organizacao',
+		behaviorGuidance: 'Comportamento alimentar',
+		symptomMonitoringGuidance: 'Monitoramento de sintomas',
+		restrictionsGuidance: 'Restricoes e alertas',
+		additionalGuidance: 'Orientacoes adicionais',
+	}
+
+	for (const [field, label] of Object.entries(fieldLabels) as Array<[NutritionGuidanceTextField, string]>) {
+		const value = normalizeTextField(guidance[field])
+		if (value.length === 0) {
+			continue
+		}
+
+		lines.push(`- ${label}: ${value}`)
+	}
+
+	return lines.length > 0 ? lines.join('\n') : '- Nenhuma orientacao preenchida manualmente ainda.'
+}
+
+function buildGuidanceGenerationPrompt(
+	patient: PatientMenuDataResponse,
+	currentMealGroups: MealGroupState[],
+	currentGuidance: NutritionGuidanceState,
+) {
+	const age = calculateAgeFromIsoDate(patient.birthDate)
+	const targetMealGroups = currentMealGroups.length > 0
+		? currentMealGroups.map((group, index) => group.name.trim() || `Refeicao ${index + 1}`)
+		: DEFAULT_MEAL_GROUP_LABELS
+	const mealGroupsDescription = targetMealGroups
+		.map((groupName, index) => `${index + 1}. ${groupName}`)
+		.join('\n')
+	const currentGuidanceDraft = summarizeGuidanceDraft(currentGuidance)
+	const patientMedicalConditions = patient.medicalConditions.length > 0
+		? patient.medicalConditions.map((condition) => formatMedicalCondition(condition)).join(', ')
+		: 'Nenhuma'
+
+	return [
+		'Voce e um nutricionista clinico especialista em orientacoes para adesao ao plano alimentar.',
+		'Objetivo: gerar orientacoes detalhadas, praticas e individualizadas para o paciente, em portugues do Brasil.',
+		'Responda SOMENTE JSON valido, sem markdown, sem comentarios e sem texto fora do JSON.',
+		'Formato obrigatorio:',
+		'{"hydrationGoalMl":3200,"mealRoutineGuidance":"...","foodQualityGuidance":"...","preparationGuidance":"...","behaviorGuidance":"...","symptomMonitoringGuidance":"...","restrictionsGuidance":"...","additionalGuidance":"...","orientationHighlights":["...","...","..."]}',
+		'Regras obrigatorias:',
+		'- Cada campo textual deve conter orientacoes concretas, detalhadas e acionaveis para o paciente.',
+		'- orientationHighlights deve conter de 4 a 8 bullets, cada um com uma frase completa e objetiva.',
+		'- Considerar objetivo, condicoes clinicas, atividade fisica e refeicoes ja planejadas.',
+		'- Evitar linguagem vaga; sugerir frequencia, exemplos e estrategia de adesao.',
+		'- Nao recomendar qualquer conduta medicamentosa.',
+		'Grupos de refeicao do plano atual:',
+		mealGroupsDescription,
+		'Rascunho atual do nutricionista (use como base e melhore com detalhes):',
+		currentGuidanceDraft,
+		'Dados do paciente:',
+		`- Nome: ${patient.name}`,
+		`- Sexo: ${formatGender(patient.gender)}`,
+		`- Idade: ${age === null ? '-' : `${age} anos`}`,
+		`- Peso: ${patient.weight.toFixed(1)} kg`,
+		`- Altura: ${patient.height.toFixed(0)} cm`,
+		`- IMC: ${patient.bmi.toFixed(1)}`,
+		`- Objetivos: ${formatGoalList(patient.goal) || '-'}`,
+		`- Atividade: ${formatActivityLevel(patient.activityLevel)}`,
+		`- Condicoes medicas: ${patientMedicalConditions}`,
+		`- TMB: ${Math.round(patient.bmr)} kcal`,
+		`- TDEE: ${Math.round(patient.tdee)} kcal`,
+		'Retorne apenas o JSON final.',
+	].join('\n')
+}
+
+function ensureGuidanceSentence(value: string) {
+	const normalizedValue = normalizeTextField(value)
+	if (normalizedValue.length === 0) {
+		return ''
+	}
+
+	return /[.!?]$/.test(normalizedValue) ? normalizedValue : `${normalizedValue}.`
+}
+
+function buildNutritionGuidanceTips(
+	patient: PatientMenuDataResponse,
+	guidance: NutritionGuidanceState,
+	aiHighlights: string[],
+) {
+	const tips: string[] = []
+	const hydrationGoalMl = guidance.hydrationGoalMl ?? (Number.isFinite(patient.weight) ? Math.round(patient.weight * 35) : null)
+
+	if (hydrationGoalMl !== null) {
+		tips.push(`Mantenha hidratacao regular ao longo do dia (meta aproximada: ${hydrationGoalMl} ml/dia).`)
+	}
+
+	for (const highlight of aiHighlights) {
+		const normalizedHighlight = ensureGuidanceSentence(highlight)
+		if (normalizedHighlight.length > 0) {
+			tips.push(normalizedHighlight)
+		}
+	}
+
+	const guidanceFieldTips: Array<{ label: string; value: string }> = [
+		{ label: 'Rotina das refeicoes', value: guidance.mealRoutineGuidance },
+		{ label: 'Qualidade alimentar', value: guidance.foodQualityGuidance },
+		{ label: 'Preparo e organizacao', value: guidance.preparationGuidance },
+		{ label: 'Comportamento alimentar', value: guidance.behaviorGuidance },
+		{ label: 'Monitoramento de sintomas', value: guidance.symptomMonitoringGuidance },
+		{ label: 'Restricoes e alertas', value: guidance.restrictionsGuidance },
+		{ label: 'Orientacoes adicionais', value: guidance.additionalGuidance },
+	]
+
+	for (const fieldTip of guidanceFieldTips) {
+		const sentence = ensureGuidanceSentence(fieldTip.value)
+		if (sentence.length === 0) {
+			continue
+		}
+
+		tips.push(`${fieldTip.label}: ${sentence}`)
+	}
+
+	const uniqueTips = Array.from(new Set(tips.map((tip) => normalizeTextField(tip)).filter((tip) => tip.length > 0)))
+	if (uniqueTips.length > 0) {
+		return uniqueTips
+	}
+
+	return [
+		'Mantenha hidratacao regular e fracionada ao longo do dia.',
+		'Priorize alimentos in natura e mantenha rotina de refeicoes consistente.',
+		'Monitore sua resposta clinica e ajuste com acompanhamento nutricional periodico.',
+	]
+}
+
+function extractSelectedFoodsFromMealGroups(currentMealGroups: MealGroupState[]) {
+	const uniqueFoods = new Set<string>()
+
+	for (const group of currentMealGroups) {
+		for (const item of group.items) {
+			const normalizedFood = normalizeTextField(item.food)
+			if (normalizedFood.length > 0) {
+				uniqueFoods.add(normalizedFood)
+			}
+		}
+	}
+
+	return Array.from(uniqueFoods)
+}
+
+function summarizeRecipeSuggestionsDraft(recipes: RecipeSuggestionState[]) {
+	if (recipes.length === 0) {
+		return '- Nenhuma receita preenchida ainda.'
+	}
+
+	return recipes
+		.slice(0, 8)
+		.map((recipe, index) => {
+			const recipeName = normalizeTextField(recipe.recipeName) || `Receita ${index + 1}`
+			const basedOnFoods = normalizeTextField(recipe.basedOnFoods)
+			const yieldInfo = normalizeTextField(recipe.yieldInfo)
+			const portionQuantity = normalizeTextField(recipe.portionQuantity)
+
+			return [
+				`- ${recipeName}`,
+				basedOnFoods ? `base: ${basedOnFoods}` : '',
+				yieldInfo ? `rendimento: ${yieldInfo}` : '',
+				portionQuantity ? `quantidade: ${portionQuantity}` : '',
+			]
+				.filter((value) => value.length > 0)
+				.join(' | ')
+		})
+		.join('\n')
+}
+
+function parseAiGeneratedRecipeSuggestions(content: string): RecipeSuggestionState[] {
+	const jsonPayload = extractJsonPayloadFromText(content)
+	if (!jsonPayload) {
+		return []
+	}
+
+	try {
+		const parsedPayload = JSON.parse(jsonPayload) as unknown
+		const rawRecipes = Array.isArray(parsedPayload)
+			? parsedPayload
+			: typeof parsedPayload === 'object' && parsedPayload !== null && Array.isArray((parsedPayload as { recipes?: unknown[] }).recipes)
+				? (parsedPayload as { recipes: unknown[] }).recipes
+				: []
+
+		const recipes = rawRecipes.flatMap((recipe): RecipeSuggestionState[] => {
+			if (typeof recipe !== 'object' || recipe === null) {
+				return []
+			}
+
+			const rawRecipe = recipe as Record<string, unknown>
+			const recipeName = normalizeTextField(rawRecipe.recipeName ?? rawRecipe.name ?? rawRecipe.receita ?? rawRecipe.title)
+			if (recipeName.length === 0) {
+				return []
+			}
+
+			const basedOnFoods = normalizeTextField(rawRecipe.basedOnFoods ?? rawRecipe.baseFoods ?? rawRecipe.alimentosBase)
+			const ingredients = normalizeMultilineTextField(rawRecipe.ingredients ?? rawRecipe.ingredientes)
+			const preparationMethod = normalizeMultilineTextField(rawRecipe.preparationMethod ?? rawRecipe.preparation ?? rawRecipe.modoPreparo)
+			const yieldInfo = normalizeTextField(rawRecipe.yieldInfo ?? rawRecipe.yield ?? rawRecipe.rendimento)
+			const portionQuantity = normalizeTextField(rawRecipe.portionQuantity ?? rawRecipe.quantityPerPortion ?? rawRecipe.quantidadePorPorcao ?? rawRecipe.quantidade)
+
+			return [{
+				id: generateId(),
+				recipeName,
+				basedOnFoods,
+				ingredients,
+				preparationMethod,
+				yieldInfo,
+				portionQuantity,
+			}]
+		})
+
+		const uniqueRecipes: RecipeSuggestionState[] = []
+		const uniqueNames = new Set<string>()
+		for (const recipe of recipes) {
+			const normalizedRecipeName = normalizeSearchText(recipe.recipeName)
+			if (normalizedRecipeName.length === 0 || uniqueNames.has(normalizedRecipeName)) {
+				continue
+			}
+
+			uniqueNames.add(normalizedRecipeName)
+			uniqueRecipes.push(recipe)
+		}
+
+		return uniqueRecipes.slice(0, 10)
+	} catch {
+		return []
+	}
+}
+
+function buildAiRecipeSettingsPrompt(settings: AiRecipeGenerationSettingsState) {
+	const recipeFocusPromptByValue: Record<AiRecipeFocus, string> = {
+		adherence: 'Priorizar receitas simples, replicaveis e faceis de manter no dia a dia.',
+		variety: 'Priorizar diversidade de tecnicas e combinacoes para evitar monotonia alimentar.',
+		protein: 'Priorizar receitas com fonte proteica relevante em relacao ao objetivo do paciente.',
+		satiety: 'Priorizar receitas com fibras e composicao que favoreca saciedade.',
+	}
+
+	const preparationPromptByValue: Record<AiPreparationProfile, string> = {
+		quick: 'Dar preferencia para preparacoes simples e rapidas.',
+		balanced: 'Combinar preparacoes simples com algumas intermediarias.',
+		elaborated: 'Pode sugerir preparos mais elaborados quando fizer sentido.',
+	}
+
+	const budgetPromptByValue: Record<AiBudgetProfile, string> = {
+		economic: 'Priorizar ingredientes de menor custo e facil acesso.',
+		standard: 'Usar perfil de custo padrao.',
+		flexible: 'Permitir ingredientes de custo mais amplo.',
+	}
+
+	const preferredFoods = parseCommaSeparatedList(settings.preferredFoods)
+	const restrictedFoods = parseCommaSeparatedList(settings.restrictedFoods)
+	const recipeCount = Math.min(Math.max(Math.round(settings.recipeCount), 2), 8)
+	const maxIngredientsPerRecipe = Math.min(Math.max(Math.round(settings.maxIngredientsPerRecipe), 3), 12)
+	const extraInstructions = settings.extraInstructions.trim()
+
+	const promptLines = [
+		`- Foco das receitas: ${recipeFocusPromptByValue[settings.recipeFocus]}`,
+		`- Perfil de preparo: ${preparationPromptByValue[settings.preparationProfile]}`,
+		`- Perfil de orcamento: ${budgetPromptByValue[settings.budgetProfile]}`,
+		`- Quantidade alvo de receitas: ${recipeCount}.`,
+		`- Maximo de ingredientes principais por receita: ${maxIngredientsPerRecipe}.`,
+	]
+
+	if (preferredFoods.length > 0) {
+		promptLines.push(`- Preferir ingredientes/alimentos: ${preferredFoods.join(', ')}.`)
+	}
+
+	if (restrictedFoods.length > 0) {
+		promptLines.push(`- Evitar ingredientes/alimentos: ${restrictedFoods.join(', ')}.`)
+	}
+
+	if (extraInstructions.length > 0) {
+		promptLines.push(`- Instrucoes extras do nutricionista: ${extraInstructions}`)
+	}
+
+	return {
+		recipeCount,
+		maxIngredientsPerRecipe,
+		promptLines,
+	}
+}
+
+function buildRecipeSuggestionsGenerationPrompt(
+	patient: PatientMenuDataResponse,
+	currentMealGroups: MealGroupState[],
+	currentGuidance: NutritionGuidanceState,
+	currentRecipes: RecipeSuggestionState[],
+	settings: AiRecipeGenerationSettingsState,
+) {
+	const age = calculateAgeFromIsoDate(patient.birthDate)
+	const selectedFoods = extractSelectedFoodsFromMealGroups(currentMealGroups)
+	const foodsList = selectedFoods.length > 0
+		? selectedFoods.map((foodName, index) => `${index + 1}. ${foodName}`).join('\n')
+		: '- Nenhum alimento selecionado.'
+	const currentDraft = summarizeRecipeSuggestionsDraft(currentRecipes)
+	const currentGuidanceDraft = summarizeGuidanceDraft(currentGuidance)
+	const patientMedicalConditions = patient.medicalConditions.length > 0
+		? patient.medicalConditions.map((condition) => formatMedicalCondition(condition)).join(', ')
+		: 'Nenhuma'
+	const recipeSettingsPrompt = buildAiRecipeSettingsPrompt(settings)
+
+	return [
+		'Voce e um nutricionista especialista em montar receitas praticas para adesao alimentar.',
+		'Objetivo: gerar sugestoes de receitas claras e aplicaveis usando os alimentos ja selecionados no plano.',
+		'Responda SOMENTE JSON valido, sem markdown e sem texto fora do JSON.',
+		'Formato obrigatorio:',
+		'{"recipes":[{"recipeName":"...","basedOnFoods":"...","ingredients":"Linha 1\\nLinha 2","preparationMethod":"...","yieldInfo":"...","portionQuantity":"..."}]}',
+		'Regras obrigatorias:',
+		`- Gerar exatamente ${recipeSettingsPrompt.recipeCount} receitas (array "recipes" com ${recipeSettingsPrompt.recipeCount} objetos).`,
+		`- Cada receita deve ter no maximo ${recipeSettingsPrompt.maxIngredientsPerRecipe} ingredientes principais.`,
+		'- Priorizar alimentos da lista fornecida em basedOnFoods.',
+		'- ingredients deve ser direto e objetivo, em linhas curtas.',
+		'- preparationMethod deve ser pratico e em linguagem simples para o paciente.',
+		'- yieldInfo e portionQuantity devem ser concretos.',
+		'- Evitar recomendacoes medicamentosas.',
+		'Parametros definidos pelo nutricionista:',
+		...recipeSettingsPrompt.promptLines,
+		'Alimentos selecionados no plano alimentar:',
+		foodsList,
+		'Resumo atual do cardapio por refeicao:',
+		summarizeCurrentDraft(currentMealGroups),
+		'Orientacoes clinicas ja definidas pelo nutricionista:',
+		currentGuidanceDraft,
+		'Rascunho atual de receitas (se houver, melhorar e complementar):',
+		currentDraft,
+		'Dados do paciente:',
+		`- Nome: ${patient.name}`,
+		`- Sexo: ${formatGender(patient.gender)}`,
+		`- Idade: ${age === null ? '-' : `${age} anos`}`,
+		`- Peso: ${patient.weight.toFixed(1)} kg`,
+		`- Altura: ${patient.height.toFixed(0)} cm`,
+		`- IMC: ${patient.bmi.toFixed(1)}`,
+		`- Objetivos: ${formatGoalList(patient.goal) || '-'}`,
+		`- Atividade: ${formatActivityLevel(patient.activityLevel)}`,
+		`- Condicoes medicas: ${patientMedicalConditions}`,
+		'Retorne apenas o JSON final.',
+	].join('\n')
 }
 
 // MAPEAMENTO IA -> TACO:
@@ -930,9 +2275,27 @@ export function MenuBuilderPage() {
 	const [patient, setPatient] = useState<PatientMenuDataResponse | null>(null)
 	const [isLoading, setIsLoading] = useState(true)
 	const [errorMessage, setErrorMessage] = useState<string | null>(null)
+	const [activeDataEntryStep, setActiveDataEntryStep] = useState(0)
 	const [customMealGroupLabel, setCustomMealGroupLabel] = useState('')
 	const [mealGroups, setMealGroups] = useState<MealGroupState[]>(() => getInitialMealGroups())
+	const [debouncedMealGroups] = useDebouncedValue(mealGroups, 280)
+	const [nutritionGuidance, setNutritionGuidance] = useState<NutritionGuidanceState>(() => NUTRITION_GUIDANCE_DEFAULT_STATE)
+	const [debouncedNutritionGuidance] = useDebouncedValue(nutritionGuidance, 320)
+	const [aiGuidanceHighlights, setAiGuidanceHighlights] = useState<string[]>([])
+	const [isGeneratingAiGuidance, setIsGeneratingAiGuidance] = useState(false)
+	const [recipeSuggestions, setRecipeSuggestions] = useState<RecipeSuggestionState[]>(() => [createRecipeSuggestion()])
+	const [debouncedRecipeSuggestions] = useDebouncedValue(recipeSuggestions, 320)
+	const [isGeneratingAiRecipes, setIsGeneratingAiRecipes] = useState(false)
+	const [aiRecipeGenerationStep, setAiRecipeGenerationStep] = useState(1)
+	const [aiRecipeGenerationStatusMessage, setAiRecipeGenerationStatusMessage] = useState(AI_RECIPE_GENERATION_INITIAL_STATUS)
+	const [aiRecipeGenerationStartedAt, setAiRecipeGenerationStartedAt] = useState<number | null>(null)
+	const [aiRecipeGenerationElapsedSeconds, setAiRecipeGenerationElapsedSeconds] = useState(0)
+	const [aiGuidanceGenerationStep, setAiGuidanceGenerationStep] = useState(1)
+	const [aiGuidanceGenerationStatusMessage, setAiGuidanceGenerationStatusMessage] = useState(AI_GUIDANCE_GENERATION_INITIAL_STATUS)
+	const [aiGuidanceGenerationStartedAt, setAiGuidanceGenerationStartedAt] = useState<number | null>(null)
+	const [aiGuidanceGenerationElapsedSeconds, setAiGuidanceGenerationElapsedSeconds] = useState(0)
 	const [tacoFoodOptions, setTacoFoodOptions] = useState<TacoFoodOption[]>([])
+	const [tacoFoodEntries, setTacoFoodEntries] = useState<TacoFoodTableEntry[]>([])
 	const [isLoadingTacoFoodOptions, setIsLoadingTacoFoodOptions] = useState(true)
 	const [isGeneratingAiMenu, setIsGeneratingAiMenu] = useState(false)
 	const [aiGenerationStep, setAiGenerationStep] = useState(1)
@@ -940,7 +2303,9 @@ export function MenuBuilderPage() {
 	const [aiGenerationStartedAt, setAiGenerationStartedAt] = useState<number | null>(null)
 	const [aiGenerationElapsedSeconds, setAiGenerationElapsedSeconds] = useState(0)
 	const [isAiSettingsModalOpen, setIsAiSettingsModalOpen] = useState(false)
+	const [isAiRecipeSettingsModalOpen, setIsAiRecipeSettingsModalOpen] = useState(false)
 	const [aiGenerationSettings, setAiGenerationSettings] = useState<AiGenerationSettingsState>(() => AI_GENERATION_DEFAULT_SETTINGS)
+	const [aiRecipeGenerationSettings, setAiRecipeGenerationSettings] = useState<AiRecipeGenerationSettingsState>(() => AI_RECIPE_GENERATION_DEFAULT_SETTINGS)
 	const [aiAvailableModels, setAiAvailableModels] = useState<string[]>([])
 	const [backendDefaultAiModel, setBackendDefaultAiModel] = useState<string | null>(null)
 	const [isLoadingAiModels, setIsLoadingAiModels] = useState(false)
@@ -955,6 +2320,10 @@ export function MenuBuilderPage() {
 	const tacoFoodLabelById = useMemo(
 		() => new Map(tacoFoodOptions.map((option) => [option.value, option.label])),
 		[tacoFoodOptions],
+	)
+	const tacoFoodById = useMemo(
+		() => new Map(tacoFoodEntries.map((entry) => [String(entry.id), entry])),
+		[tacoFoodEntries],
 	)
 
 	const parsedPatientId = useMemo(() => {
@@ -1051,23 +2420,26 @@ export function MenuBuilderPage() {
 	useEffect(() => {
 		let isMounted = true
 
-		const loadTacoFoodOptions = async () => {
-			try {
-				const tacoModule = await import('../../../dates/tables/TACO.json')
-				if (!isMounted) {
-					return
-				}
+			const loadTacoFoodOptions = async () => {
+				try {
+					const tacoModule = await import('../../../dates/tables/TACO.json')
+					if (!isMounted) {
+						return
+					}
 
-				setTacoFoodOptions(buildTacoFoodOptions(tacoModule.default))
-			} catch {
-				if (!isMounted) {
-					return
-				}
+					const parsedTacoFoodEntries = parseTacoFoodEntries(tacoModule.default)
+					setTacoFoodEntries(parsedTacoFoodEntries)
+					setTacoFoodOptions(buildTacoFoodOptions(parsedTacoFoodEntries))
+				} catch {
+					if (!isMounted) {
+						return
+					}
 
-				setTacoFoodOptions([])
-			} finally {
-				if (isMounted) {
-					setIsLoadingTacoFoodOptions(false)
+					setTacoFoodEntries([])
+					setTacoFoodOptions([])
+				} finally {
+					if (isMounted) {
+						setIsLoadingTacoFoodOptions(false)
 				}
 			}
 		}
@@ -1082,7 +2454,7 @@ export function MenuBuilderPage() {
 	// EFEITO 3:
 	// Busca modelos disponiveis no backend quando o modal de parametros da IA e aberto.
 	useEffect(() => {
-		if (!isAiSettingsModalOpen || !token) {
+		if ((!isAiSettingsModalOpen && !isAiRecipeSettingsModalOpen) || !token) {
 			return
 		}
 
@@ -1141,7 +2513,7 @@ export function MenuBuilderPage() {
 		return () => {
 			isActive = false
 		}
-	}, [isAiSettingsModalOpen, logout, token])
+	}, [isAiRecipeSettingsModalOpen, isAiSettingsModalOpen, logout, token])
 
 	// EFEITO 4:
 	// Atualiza contador de tempo exibido no overlay durante a geracao.
@@ -1158,6 +2530,34 @@ export function MenuBuilderPage() {
 			window.clearInterval(intervalId)
 		}
 	}, [aiGenerationStartedAt, isGeneratingAiMenu])
+
+	useEffect(() => {
+		if (!isGeneratingAiGuidance || aiGuidanceGenerationStartedAt === null) {
+			return
+		}
+
+		const intervalId = window.setInterval(() => {
+			setAiGuidanceGenerationElapsedSeconds(Math.floor((Date.now() - aiGuidanceGenerationStartedAt) / 1000))
+		}, 1000)
+
+		return () => {
+			window.clearInterval(intervalId)
+		}
+	}, [aiGuidanceGenerationStartedAt, isGeneratingAiGuidance])
+
+	useEffect(() => {
+		if (!isGeneratingAiRecipes || aiRecipeGenerationStartedAt === null) {
+			return
+		}
+
+		const intervalId = window.setInterval(() => {
+			setAiRecipeGenerationElapsedSeconds(Math.floor((Date.now() - aiRecipeGenerationStartedAt) / 1000))
+		}, 1000)
+
+		return () => {
+			window.clearInterval(intervalId)
+		}
+	}, [aiRecipeGenerationStartedAt, isGeneratingAiRecipes])
 
 	// DADOS DERIVADOS PARA EXIBICAO:
 	// Consolidam informacoes clinicas e de UI sem duplicar logica no JSX.
@@ -1192,7 +2592,61 @@ export function MenuBuilderPage() {
 		() => mealGroups.reduce((total, group) => total + group.items.length, 0),
 		[mealGroups],
 	)
-	const effectiveAiModelLabel = aiGenerationSettings.modelOverride?.trim() || backendDefaultAiModel || 'Padrao do backend'
+	const nutritionGuidanceTipsForPdf = useMemo(() => {
+		if (!patient) {
+			return []
+		}
+
+		return buildNutritionGuidanceTips(patient, debouncedNutritionGuidance, aiGuidanceHighlights)
+	}, [aiGuidanceHighlights, debouncedNutritionGuidance, patient])
+	const filledNutritionGuidanceFieldsCount = useMemo(() => {
+		let filledCount = 0
+
+		if (nutritionGuidance.hydrationGoalMl !== null) {
+			filledCount += 1
+		}
+
+		const textFields: NutritionGuidanceTextField[] = [
+			'mealRoutineGuidance',
+			'foodQualityGuidance',
+			'preparationGuidance',
+			'behaviorGuidance',
+			'symptomMonitoringGuidance',
+			'restrictionsGuidance',
+			'additionalGuidance',
+		]
+
+		for (const field of textFields) {
+			if (normalizeTextField(nutritionGuidance[field]).length > 0) {
+				filledCount += 1
+			}
+		}
+
+		return filledCount
+	}, [nutritionGuidance])
+	const selectedFoodsForRecipes = useMemo(
+		() => extractSelectedFoodsFromMealGroups(mealGroups),
+		[mealGroups],
+	)
+	const filledRecipeSuggestionsCount = useMemo(() => (
+		recipeSuggestions.reduce((total, recipe) => (
+			normalizeTextField(recipe.recipeName).length > 0 ||
+			normalizeTextField(recipe.ingredients).length > 0 ||
+			normalizeTextField(recipe.preparationMethod).length > 0
+				? total + 1
+				: total
+		), 0)
+	), [recipeSuggestions])
+	const planNutritionPreview = useMemo(
+		() => buildPlanNutritionPreviewData(mealGroups, tacoFoodById, patient?.gender ?? ''),
+		[mealGroups, patient?.gender, tacoFoodById],
+	)
+	const effectiveAiMenuModelLabel = aiGenerationSettings.modelOverride?.trim() || backendDefaultAiModel || 'Padrao do backend'
+	const effectiveAiGuidanceModelLabel = aiGenerationSettings.modelOverride?.trim() || backendDefaultAiModel || 'Padrao do backend'
+	const effectiveAiRecipeModelLabel = aiRecipeGenerationSettings.modelOverride?.trim()
+		|| aiGenerationSettings.modelOverride?.trim()
+		|| backendDefaultAiModel
+		|| 'Padrao do backend'
 
 	// CONFIGURACOES DE APRESENTACAO DA PAGINA E DO MODAL.
 	const pageTitle = patient ? `Cardapio: ${patient.name}` : 'Cardapio do paciente'
@@ -1217,6 +2671,14 @@ export function MenuBuilderPage() {
 		setIsAiSettingsModalOpen(false)
 	}
 
+	const closeAiRecipeSettingsModal = () => {
+		if (isGeneratingAiRecipes) {
+			return
+		}
+
+		setIsAiRecipeSettingsModalOpen(false)
+	}
+
 	const openAiSettingsModal = () => {
 		if (!patient) {
 			notifications.show({
@@ -1228,6 +2690,280 @@ export function MenuBuilderPage() {
 		}
 
 		setIsAiSettingsModalOpen(true)
+	}
+
+	const openAiRecipeSettingsModal = () => {
+		if (!patient) {
+			notifications.show({
+				title: 'Receitas sugeridas',
+				message: 'Dados do paciente indisponiveis para gerar receitas.',
+				color: 'red',
+			})
+			return
+		}
+
+		if (selectedFoodsForRecipes.length === 0) {
+			notifications.show({
+				title: 'Receitas sugeridas',
+				message: 'Selecione alimentos no plano alimentar antes de gerar receitas.',
+				color: 'yellow',
+			})
+			return
+		}
+
+		setIsAiRecipeSettingsModalOpen(true)
+	}
+
+	const handleDataEntryStepChange = (nextStep: number) => {
+		setActiveDataEntryStep(Math.min(Math.max(nextStep, 0), DATA_ENTRY_STEPS_TOTAL - 1))
+	}
+
+	const handleNutritionGuidanceTextFieldChange = (
+		field: NutritionGuidanceTextField,
+		nextValue: string,
+	) => {
+		setNutritionGuidance((previousGuidance) => ({
+			...previousGuidance,
+			[field]: nextValue,
+		}))
+	}
+
+	const handleNutritionGuidanceHydrationGoalChange = (value: string | number) => {
+		if (typeof value !== 'number' || !Number.isFinite(value)) {
+			setNutritionGuidance((previousGuidance) => ({
+				...previousGuidance,
+				hydrationGoalMl: null,
+			}))
+			return
+		}
+
+		const boundedValue = Math.min(Math.max(Math.round(value), 1200), 7000)
+		setNutritionGuidance((previousGuidance) => ({
+			...previousGuidance,
+			hydrationGoalMl: boundedValue,
+		}))
+	}
+
+	const handleGenerateAiGuidanceClick = async () => {
+		if (!token) {
+			logout()
+			return
+		}
+
+		if (!patient) {
+			notifications.show({
+				title: 'Orientacoes nutricionais',
+				message: 'Dados do paciente indisponiveis para gerar orientacoes.',
+				color: 'red',
+			})
+			return
+		}
+
+		try {
+			setIsGeneratingAiGuidance(true)
+			const modelOverride = aiGenerationSettings.modelOverride?.trim()
+			const targetModelLabel = modelOverride || backendDefaultAiModel || 'padrao do backend'
+			setAiGuidanceGenerationStep(1)
+			setAiGuidanceGenerationStatusMessage(AI_GUIDANCE_GENERATION_INITIAL_STATUS)
+			setAiGuidanceGenerationStartedAt(Date.now())
+			setAiGuidanceGenerationElapsedSeconds(0)
+			setAiGuidanceGenerationStep(2)
+			setAiGuidanceGenerationStatusMessage(`Enviando prompt de orientacoes para o modelo ${targetModelLabel}...`)
+			const response = await fetch(buildApiUrl('/api/ai/chat'), {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${token}`,
+					Accept: 'application/json',
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					prompt: buildGuidanceGenerationPrompt(patient, mealGroups, nutritionGuidance),
+					model: modelOverride ? modelOverride : undefined,
+				}),
+			})
+
+			if (response.status === 401) {
+				logout()
+				return
+			}
+
+			if (!response.ok) {
+				const message = await extractErrorMessage(response, GENERATE_GUIDANCE_ERROR_MESSAGE)
+				throw new Error(message)
+			}
+
+			setAiGuidanceGenerationStep(3)
+			setAiGuidanceGenerationStatusMessage('Interpretando resposta e estruturando orientacoes...')
+			const aiResponse = (await response.json()) as Partial<AiChatResponse>
+			const aiContent = typeof aiResponse.content === 'string' ? aiResponse.content : ''
+			const parsedGuidance = parseAiGeneratedNutritionGuidance(aiContent)
+			if (!parsedGuidance) {
+				throw new Error('A IA retornou orientacoes em formato invalido. Tente novamente.')
+			}
+
+			setAiGuidanceGenerationStep(4)
+			setAiGuidanceGenerationStatusMessage('Aplicando orientacoes no formulario e no preview...')
+			setNutritionGuidance((previousGuidance) => ({
+				...previousGuidance,
+				...parsedGuidance.guidance,
+			}))
+
+			if (parsedGuidance.highlights.length > 0) {
+				setAiGuidanceHighlights(parsedGuidance.highlights)
+			}
+
+			notifications.show({
+				title: 'Orientacoes geradas',
+				message: `Orientacoes detalhadas atualizadas (${parsedGuidance.highlights.length} destaque(s) principais).`,
+				color: 'teal',
+			})
+		} catch (error) {
+			const message = error instanceof Error ? error.message : GENERATE_GUIDANCE_ERROR_MESSAGE
+			notifications.show({
+				title: 'Erro ao gerar orientacoes',
+				message,
+				color: 'red',
+			})
+		} finally {
+			setIsGeneratingAiGuidance(false)
+			setAiGuidanceGenerationStep(1)
+			setAiGuidanceGenerationStatusMessage(AI_GUIDANCE_GENERATION_INITIAL_STATUS)
+			setAiGuidanceGenerationStartedAt(null)
+			setAiGuidanceGenerationElapsedSeconds(0)
+		}
+	}
+
+	const handleAddRecipeSuggestion = () => {
+		setRecipeSuggestions((previousRecipes) => [...previousRecipes, createRecipeSuggestion()])
+	}
+
+	const handleRemoveRecipeSuggestion = (recipeId: string) => {
+		setRecipeSuggestions((previousRecipes) => {
+			if (previousRecipes.length <= 1) {
+				return [createRecipeSuggestion()]
+			}
+
+			return previousRecipes.filter((recipe) => recipe.id !== recipeId)
+		})
+	}
+
+	const handleRecipeSuggestionFieldChange = (
+		recipeId: string,
+		field: RecipeSuggestionEditableField,
+		nextValue: string,
+	) => {
+		setRecipeSuggestions((previousRecipes) => (
+			previousRecipes.map((recipe) => (
+				recipe.id === recipeId
+					? {
+						...recipe,
+						[field]: nextValue,
+					}
+					: recipe
+			))
+		))
+	}
+
+	const handleGenerateAiRecipeSuggestionsClick = async () => {
+		if (!token) {
+			logout()
+			return
+		}
+
+		if (!patient) {
+			notifications.show({
+				title: 'Receitas sugeridas',
+				message: 'Dados do paciente indisponiveis para gerar receitas.',
+				color: 'red',
+			})
+			return
+		}
+
+		if (selectedFoodsForRecipes.length === 0) {
+			notifications.show({
+				title: 'Receitas sugeridas',
+				message: 'Selecione alimentos no plano alimentar antes de gerar receitas.',
+				color: 'yellow',
+			})
+			return
+		}
+
+		try {
+			const resolvedRecipeSettings = buildAiRecipeSettingsPrompt(aiRecipeGenerationSettings)
+			setIsGeneratingAiRecipes(true)
+			setIsAiRecipeSettingsModalOpen(false)
+			const modelOverride = aiRecipeGenerationSettings.modelOverride?.trim() || aiGenerationSettings.modelOverride?.trim()
+			const targetModelLabel = modelOverride || backendDefaultAiModel || 'padrao do backend'
+			setAiRecipeGenerationStep(1)
+			setAiRecipeGenerationStatusMessage(AI_RECIPE_GENERATION_INITIAL_STATUS)
+			setAiRecipeGenerationStartedAt(Date.now())
+			setAiRecipeGenerationElapsedSeconds(0)
+			setAiRecipeGenerationStep(2)
+			setAiRecipeGenerationStatusMessage(`Enviando prompt de receitas para o modelo ${targetModelLabel}...`)
+			const response = await fetch(buildApiUrl('/api/ai/chat'), {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${token}`,
+					Accept: 'application/json',
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					prompt: buildRecipeSuggestionsGenerationPrompt(
+						patient,
+						mealGroups,
+						nutritionGuidance,
+						recipeSuggestions,
+						aiRecipeGenerationSettings,
+					),
+					model: modelOverride ? modelOverride : undefined,
+				}),
+			})
+
+			if (response.status === 401) {
+				logout()
+				return
+			}
+
+			if (!response.ok) {
+				const message = await extractErrorMessage(response, GENERATE_RECIPE_SUGGESTIONS_ERROR_MESSAGE)
+				throw new Error(message)
+			}
+
+			setAiRecipeGenerationStep(3)
+			setAiRecipeGenerationStatusMessage('Interpretando retorno e estruturando tabela de receitas...')
+			const aiResponse = (await response.json()) as Partial<AiChatResponse>
+			const aiContent = typeof aiResponse.content === 'string' ? aiResponse.content : ''
+			const parsedRecipes = parseAiGeneratedRecipeSuggestions(aiContent)
+			if (parsedRecipes.length === 0) {
+				throw new Error('A IA retornou receitas em formato invalido. Tente novamente.')
+			}
+			const recipesToApply = parsedRecipes.slice(0, resolvedRecipeSettings.recipeCount)
+
+			setAiRecipeGenerationStep(4)
+			setAiRecipeGenerationStatusMessage('Aplicando receitas sugeridas...')
+			setRecipeSuggestions(recipesToApply)
+
+			notifications.show({
+				title: 'Receitas geradas',
+				message: recipesToApply.length < resolvedRecipeSettings.recipeCount
+					? `Foram aplicadas ${recipesToApply.length} receita(s). O alvo configurado era ${resolvedRecipeSettings.recipeCount}.`
+					: `${recipesToApply.length} receita(s) sugerida(s) com base nos alimentos selecionados.`,
+				color: 'teal',
+			})
+		} catch (error) {
+			const message = error instanceof Error ? error.message : GENERATE_RECIPE_SUGGESTIONS_ERROR_MESSAGE
+			notifications.show({
+				title: 'Erro ao gerar receitas',
+				message,
+				color: 'red',
+			})
+		} finally {
+			setIsGeneratingAiRecipes(false)
+			setAiRecipeGenerationStep(1)
+			setAiRecipeGenerationStatusMessage(AI_RECIPE_GENERATION_INITIAL_STATUS)
+			setAiRecipeGenerationStartedAt(null)
+			setAiRecipeGenerationElapsedSeconds(0)
+		}
 	}
 
 	// HANDLERS DE EDICAO DO CARDAPIO (CRUD):
@@ -1507,6 +3243,14 @@ export function MenuBuilderPage() {
 		void handleAiGenerateClick()
 	}
 
+	const handleConfirmAiRecipeGenerate = () => {
+		if (isGeneratingAiRecipes) {
+			return
+		}
+
+		void handleGenerateAiRecipeSuggestionsClick()
+	}
+
 	// RENDER:
 	// 1) Layout principal da pagina.
 	// 2) Conteudo com estados de loading/erro/sucesso.
@@ -1594,6 +3338,25 @@ export function MenuBuilderPage() {
 													</Text>
 												</Box>
 
+												<Box className="rounded-2xl border border-[#d2e4eb] bg-white p-4">
+													<Stepper
+														active={activeDataEntryStep}
+														onStepClick={handleDataEntryStepChange}
+														allowNextStepsSelect={true}
+														color="cyan"
+														size="sm"
+														classNames={{
+															stepLabel: 'text-xs font-semibold text-slate-700',
+															stepDescription: 'text-[0.72rem] text-slate-500',
+														}}
+													>
+														<Stepper.Step label="Etapa 1" description="Itens do plano alimentar" />
+														<Stepper.Step label="Etapa 2" description="Orientacoes do nutricionista" />
+														<Stepper.Step label="Etapa 3" description="Receitas sugeridas" />
+													</Stepper>
+												</Box>
+
+												<Box className={activeDataEntryStep === 0 ? 'space-y-4' : 'hidden'}>
 												<Box className="rounded-2xl border border-[#d2e4eb] bg-white p-4">
 													<Text className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">
 														Resumo do paciente
@@ -1926,9 +3689,382 @@ export function MenuBuilderPage() {
 																</Fieldset>
 															</Box>
 														)
-													})
-												)}
-											</Stack>
+														})
+													)}
+
+													<Group justify="flex-end">
+														<Button
+															type="button"
+															radius="md"
+															classNames={primaryButtonClassNames}
+															rightSection={<MdArrowForward size={16} />}
+															onClick={() => handleDataEntryStepChange(1)}
+														>
+															Avancar para orientacoes
+														</Button>
+													</Group>
+												</Box>
+
+												<Box className={activeDataEntryStep === 1 ? 'rounded-2xl border border-[#d2e4eb] bg-white p-4' : 'hidden'}>
+													<Stack gap="sm">
+														<Box className="rounded-xl border border-[#deebf2] bg-[#f8fcff] p-3">
+															<Text className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-slate-500">
+																Orientacoes ao paciente
+															</Text>
+															<Text className="mt-2 text-sm text-slate-600">
+																Preencha orientacoes detalhadas e acionaveis. Se preferir, use IA para gerar
+																um rascunho robusto e ajuste manualmente.
+															</Text>
+														</Box>
+
+														<Group justify="space-between">
+															<Button
+																type="button"
+																radius="md"
+																classNames={neutralButtonClassNames}
+																leftSection={<MdArrowBack size={16} />}
+																onClick={() => handleDataEntryStepChange(0)}
+															>
+																Voltar para itens
+															</Button>
+															<Button
+																type="button"
+																radius="md"
+																classNames={primaryButtonClassNames}
+																leftSection={<MdAutoAwesome size={18} />}
+																onClick={handleGenerateAiGuidanceClick}
+																loading={isGeneratingAiGuidance}
+															>
+																{isGeneratingAiGuidance ? 'Gerando orientacoes' : 'Gerar orientacoes com IA'}
+															</Button>
+														</Group>
+
+														<Grid gutter="sm" align="flex-start">
+															<Grid.Col span={{ base: 12, md: 4 }}>
+																	<NumberInput
+																		label="Meta de hidratacao (ml/dia)"
+																		placeholder="Ex.: 3200"
+																		value={nutritionGuidance.hydrationGoalMl ?? undefined}
+																		onChange={handleNutritionGuidanceHydrationGoalChange}
+																	min={1200}
+																	max={7000}
+																	step={100}
+																	allowDecimal={false}
+																	radius="md"
+																	classNames={textInputClassNames}
+																/>
+															</Grid.Col>
+
+															<Grid.Col span={{ base: 12, md: 8 }}>
+																<Textarea
+																	label="Rotina das refeicoes"
+																	placeholder="Descreva distribuicao de horarios, intervalos e estrutura de refeicoes."
+																	value={nutritionGuidance.mealRoutineGuidance}
+																	onChange={(event) => handleNutritionGuidanceTextFieldChange('mealRoutineGuidance', event.currentTarget.value)}
+																	autosize
+																	minRows={3}
+																	maxRows={6}
+																	radius="md"
+																	classNames={textInputClassNames}
+																/>
+															</Grid.Col>
+
+															<Grid.Col span={{ base: 12, md: 6 }}>
+																<Textarea
+																	label="Qualidade alimentar"
+																	placeholder="Inclua escolhas de alimentos, grupos prioritarios e exemplos prontos."
+																	value={nutritionGuidance.foodQualityGuidance}
+																	onChange={(event) => handleNutritionGuidanceTextFieldChange('foodQualityGuidance', event.currentTarget.value)}
+																	autosize
+																	minRows={3}
+																	maxRows={6}
+																	radius="md"
+																	classNames={textInputClassNames}
+																/>
+															</Grid.Col>
+
+															<Grid.Col span={{ base: 12, md: 6 }}>
+																<Textarea
+																	label="Preparo e organizacao"
+																	placeholder="Oriente planejamento de compras, preparo e estrategia para rotina corrida."
+																	value={nutritionGuidance.preparationGuidance}
+																	onChange={(event) => handleNutritionGuidanceTextFieldChange('preparationGuidance', event.currentTarget.value)}
+																	autosize
+																	minRows={3}
+																	maxRows={6}
+																	radius="md"
+																	classNames={textInputClassNames}
+																/>
+															</Grid.Col>
+
+															<Grid.Col span={{ base: 12, md: 6 }}>
+																<Textarea
+																	label="Comportamento alimentar"
+																	placeholder="Descreva tecnicas para adesao, fome emocional, mastigacao e ambiente de refeicao."
+																	value={nutritionGuidance.behaviorGuidance}
+																	onChange={(event) => handleNutritionGuidanceTextFieldChange('behaviorGuidance', event.currentTarget.value)}
+																	autosize
+																	minRows={3}
+																	maxRows={6}
+																	radius="md"
+																	classNames={textInputClassNames}
+																/>
+															</Grid.Col>
+
+															<Grid.Col span={{ base: 12, md: 6 }}>
+																<Textarea
+																	label="Monitoramento de sintomas"
+																	placeholder="Informe sinais de alerta, evolucao esperada e quando retornar para ajuste."
+																	value={nutritionGuidance.symptomMonitoringGuidance}
+																	onChange={(event) => handleNutritionGuidanceTextFieldChange('symptomMonitoringGuidance', event.currentTarget.value)}
+																	autosize
+																	minRows={3}
+																	maxRows={6}
+																	radius="md"
+																	classNames={textInputClassNames}
+																/>
+															</Grid.Col>
+
+															<Grid.Col span={{ base: 12, md: 6 }}>
+																<Textarea
+																	label="Restricoes e alertas"
+																	placeholder="Descreva evitacoes especificas e cuidados clinicos prioritarios."
+																	value={nutritionGuidance.restrictionsGuidance}
+																	onChange={(event) => handleNutritionGuidanceTextFieldChange('restrictionsGuidance', event.currentTarget.value)}
+																	autosize
+																	minRows={3}
+																	maxRows={6}
+																	radius="md"
+																	classNames={textInputClassNames}
+																/>
+															</Grid.Col>
+
+															<Grid.Col span={{ base: 12, md: 6 }}>
+																<Textarea
+																	label="Orientacoes adicionais"
+																	placeholder="Inclua exemplos prontos, reforcos de adesao e observacoes finais."
+																	value={nutritionGuidance.additionalGuidance}
+																	onChange={(event) => handleNutritionGuidanceTextFieldChange('additionalGuidance', event.currentTarget.value)}
+																	autosize
+																	minRows={3}
+																	maxRows={6}
+																	radius="md"
+																	classNames={textInputClassNames}
+																/>
+															</Grid.Col>
+														</Grid>
+
+															{aiGuidanceHighlights.length > 0 ? (
+																<Box className="rounded-xl border border-[#d9eaf2] bg-[#f7fbff] p-3">
+																<Text className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-slate-500">
+																	Destaques gerados pela IA
+																</Text>
+																<Stack gap={4} className="mt-2">
+																	{aiGuidanceHighlights.map((highlight, index) => (
+																		<Text key={`ai-guidance-highlight-${index}`} className="text-sm text-slate-700">
+																			- {highlight}
+																		</Text>
+																	))}
+																	</Stack>
+																</Box>
+															) : null}
+
+															<Group justify="flex-end" mt="xs">
+																<Button
+																	type="button"
+																	radius="md"
+																	classNames={primaryButtonClassNames}
+																	rightSection={<MdArrowForward size={16} />}
+																	onClick={() => handleDataEntryStepChange(2)}
+																>
+																	Avancar para receitas
+																</Button>
+															</Group>
+														</Stack>
+													</Box>
+
+													<Box className={activeDataEntryStep === 2 ? 'rounded-2xl border border-[#d2e4eb] bg-white p-4' : 'hidden'}>
+														<Stack gap="sm">
+															<Box className="rounded-xl border border-[#deebf2] bg-[#f8fcff] p-3">
+																<Text className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-slate-500">
+																	Receitas sugeridas
+																</Text>
+																<Text className="mt-2 text-sm text-slate-600">
+																	Monte receitas com base nos alimentos selecionados. Voce pode preencher
+																	manualmente ou pedir para a IA gerar sugestoes completas.
+																</Text>
+															</Box>
+
+															<Group justify="space-between">
+																<Button
+																	type="button"
+																	radius="md"
+																	classNames={neutralButtonClassNames}
+																	leftSection={<MdArrowBack size={16} />}
+																	onClick={() => handleDataEntryStepChange(1)}
+																>
+																	Voltar para orientacoes
+																</Button>
+																<Group gap="xs">
+																	<Button
+																		type="button"
+																		radius="md"
+																		classNames={neutralButtonClassNames}
+																		leftSection={<MdAdd size={17} />}
+																		onClick={handleAddRecipeSuggestion}
+																	>
+																		Adicionar receita
+																	</Button>
+																	<Button
+																		type="button"
+																		radius="md"
+																		classNames={primaryButtonClassNames}
+																		leftSection={<MdAutoAwesome size={18} />}
+																		onClick={openAiRecipeSettingsModal}
+																		loading={isGeneratingAiRecipes}
+																	>
+																		{isGeneratingAiRecipes ? 'Gerando receitas' : 'Gerar receitas com IA'}
+																	</Button>
+																</Group>
+															</Group>
+
+															<Box className="rounded-xl border border-[#d9e7ee] bg-[#f8fcff] p-3">
+																<Text className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-slate-500">
+																	Base de alimentos selecionados
+																</Text>
+																{selectedFoodsForRecipes.length > 0 ? (
+																	<Box className="mt-2 flex flex-wrap gap-1.5">
+																		{selectedFoodsForRecipes.map((foodName) => (
+																			<Text
+																				key={foodName}
+																				component="span"
+																				className="inline-flex rounded-full border border-[#c7dce8] bg-white px-2.5 py-1 text-[0.72rem] font-medium text-slate-700"
+																			>
+																				{foodName}
+																			</Text>
+																		))}
+																	</Box>
+																) : (
+																	<Text className="mt-2 text-sm text-slate-600">
+																		Nenhum alimento selecionado ainda. Preencha os itens na Etapa 1 para gerar receitas com IA.
+																	</Text>
+																)}
+															</Box>
+
+															<Box className="rounded-xl border border-[#cfe0e8] bg-[#f7fbff] p-3">
+																<Text className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-slate-500">
+																	Estrutura da receita
+																</Text>
+																<Text className="mt-1 text-sm text-slate-600">
+																	Cada receita fica organizada em blocos para facilitar a visualizacao e o preenchimento.
+																</Text>
+
+																<Stack gap="sm" className="mt-3">
+																	{recipeSuggestions.map((recipe, recipeIndex) => (
+																		<Box
+																			key={recipe.id}
+																			className="rounded-xl border border-[#d4e5ed] bg-white p-3 md:p-4"
+																		>
+																			<Group justify="space-between" align="center" className="mb-2">
+																				<Box>
+																					<Text className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[#1c5f7a]">
+																						Receita {recipeIndex + 1}
+																					</Text>
+																				</Box>
+																				<ActionIcon
+																					variant="light"
+																					color="red"
+																					radius="md"
+																					size={34}
+																					title="Remover receita sugerida"
+																					aria-label="Remover receita sugerida"
+																					onClick={() => handleRemoveRecipeSuggestion(recipe.id)}
+																				>
+																					<MdDeleteOutline size={17} />
+																				</ActionIcon>
+																			</Group>
+
+																			<Grid gutter="sm" align="flex-start">
+																				<Grid.Col span={{ base: 12, md: 6 }}>
+																					<TextInput
+																						label="Nome da receita"
+																						placeholder="Ex.: Panqueca de banana e aveia"
+																						value={recipe.recipeName}
+																						onChange={(event) => handleRecipeSuggestionFieldChange(recipe.id, 'recipeName', event.currentTarget.value)}
+																						radius="md"
+																						classNames={textInputClassNames}
+																					/>
+																				</Grid.Col>
+
+																				<Grid.Col span={{ base: 12, md: 6 }}>
+																					<TextInput
+																						label="Base de alimentos"
+																						placeholder="Ex.: Banana, aveia, ovo"
+																						value={recipe.basedOnFoods}
+																						onChange={(event) => handleRecipeSuggestionFieldChange(recipe.id, 'basedOnFoods', event.currentTarget.value)}
+																						radius="md"
+																						classNames={textInputClassNames}
+																					/>
+																				</Grid.Col>
+
+																				<Grid.Col span={{ base: 12, md: 6 }}>
+																					<Textarea
+																						label="Ingredientes"
+																						placeholder="Ex.: 1 banana\n2 colheres de aveia\n1 ovo"
+																						value={recipe.ingredients}
+																						onChange={(event) => handleRecipeSuggestionFieldChange(recipe.id, 'ingredients', event.currentTarget.value)}
+																						autosize
+																						minRows={3}
+																						maxRows={6}
+																						radius="md"
+																						classNames={textInputClassNames}
+																					/>
+																				</Grid.Col>
+
+																				<Grid.Col span={{ base: 12, md: 6 }}>
+																					<Textarea
+																						label="Modo de preparo"
+																						placeholder="Ex.: Misture os ingredientes e cozinhe em fogo medio por 3 minutos."
+																						value={recipe.preparationMethod}
+																						onChange={(event) => handleRecipeSuggestionFieldChange(recipe.id, 'preparationMethod', event.currentTarget.value)}
+																						autosize
+																						minRows={3}
+																						maxRows={6}
+																						radius="md"
+																						classNames={textInputClassNames}
+																					/>
+																				</Grid.Col>
+
+																				<Grid.Col span={{ base: 12, sm: 6, md: 6 }}>
+																					<TextInput
+																						label="Rendimento"
+																						placeholder="Ex.: 2 porcoes"
+																						value={recipe.yieldInfo}
+																						onChange={(event) => handleRecipeSuggestionFieldChange(recipe.id, 'yieldInfo', event.currentTarget.value)}
+																						radius="md"
+																						classNames={textInputClassNames}
+																					/>
+																				</Grid.Col>
+
+																				<Grid.Col span={{ base: 12, sm: 6, md: 6 }}>
+																					<TextInput
+																						label="Quantidade por porcao"
+																						placeholder="Ex.: 1 porcao (180 g)"
+																						value={recipe.portionQuantity}
+																						onChange={(event) => handleRecipeSuggestionFieldChange(recipe.id, 'portionQuantity', event.currentTarget.value)}
+																						radius="md"
+																						classNames={textInputClassNames}
+																					/>
+																				</Grid.Col>
+																			</Grid>
+																		</Box>
+																	))}
+																</Stack>
+															</Box>
+														</Stack>
+													</Box>
+
+												</Stack>
 										</Box>
 									</Grid.Col>
 
@@ -1957,29 +4093,24 @@ export function MenuBuilderPage() {
 													</Text>
 												</Box>
 
-												<Box className="flex min-h-[360px] flex-1 flex-col items-center justify-center rounded-3xl border-2 border-dashed border-[#c8d7df] bg-[linear-gradient(180deg,#f9fcff_0%,#f1f7fb_100%)] px-4 py-8 text-center">
-													<MdPictureAsPdf size={58} className="text-[#8fa7b5]" />
-													<Text className="mt-4 text-base font-semibold text-slate-900">
-														Preview do PDF em breve
-													</Text>
-													<Text className="mt-2 max-w-[280px] text-sm text-slate-600">
-														Quando a geracao estiver pronta, o canvas com as paginas do PDF sera exibido aqui.
-													</Text>
-													<Button type="button" radius="md" className="mt-5" classNames={neutralButtonClassNames} disabled>
-														Exportar PDF
-													</Button>
-												</Box>
+													<Box className="min-h-[360px] flex-1">
+														<MealPlanPdfCanvasPreview
+															patient={patient}
+															mealGroups={debouncedMealGroups}
+															orientationTips={nutritionGuidanceTipsForPdf}
+															nutritionPreview={planNutritionPreview}
+															recipeSuggestions={debouncedRecipeSuggestions}
+														/>
+													</Box>
 
-													{/* Barra de acoes do editor: novo grupo + disparo da geracao com IA. */}
-													{/* Barra de acoes do editor: novo grupo + disparo da geracao com IA. */}
 													<Box className="rounded-2xl border border-[#d2e4eb] bg-white p-4">
-													<Text className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-slate-500">
-														Proximos incrementos
-													</Text>
-													<Text className="mt-2 text-sm text-slate-600">
-														Persistencia do cardapio por paciente, IA para sugestao automatica e exportacao final.
-													</Text>
-												</Box>
+														<Text className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-slate-500">
+															Adequacao no PDF
+														</Text>
+														<Text className="mt-2 text-sm text-slate-600">
+															As tabelas de porcoes e adequacao nutricional agora fazem parte do proprio PDF do plano alimentar.
+														</Text>
+													</Box>
 											</Stack>
 										</Box>
 									</Grid.Col>
@@ -2213,6 +4344,224 @@ export function MenuBuilderPage() {
 				</Box>
 				</Modal>
 
+				<Modal
+					opened={isAiRecipeSettingsModalOpen}
+					onClose={closeAiRecipeSettingsModal}
+					title="Parametros da geracao de receitas com IA"
+					centered
+					withCloseButton={!isGeneratingAiRecipes}
+					closeOnClickOutside={!isGeneratingAiRecipes}
+					closeOnEscape={!isGeneratingAiRecipes}
+					size="lg"
+					classNames={modalClassNames}
+				>
+					<Box className="p-5">
+						<Stack gap="sm">
+							<Text className="text-sm text-slate-700">
+								Defina os parametros para controlar melhor o formato das receitas que a IA vai sugerir.
+							</Text>
+
+							<Grid gutter="sm">
+								<Grid.Col span={{ base: 12, md: 6 }}>
+									<Select
+										label="Foco das receitas"
+										data={AI_RECIPE_FOCUS_OPTIONS}
+										value={aiRecipeGenerationSettings.recipeFocus}
+										onChange={(value) => {
+											if (!value) {
+												return
+											}
+
+											setAiRecipeGenerationSettings((previousSettings) => ({
+												...previousSettings,
+												recipeFocus: value as AiRecipeFocus,
+											}))
+										}}
+										radius="md"
+										classNames={textInputClassNames}
+									/>
+								</Grid.Col>
+
+								<Grid.Col span={{ base: 12, md: 6 }}>
+									<Select
+										label="Perfil de preparo"
+										data={AI_PREPARATION_PROFILE_OPTIONS}
+										value={aiRecipeGenerationSettings.preparationProfile}
+										onChange={(value) => {
+											if (!value) {
+												return
+											}
+
+											setAiRecipeGenerationSettings((previousSettings) => ({
+												...previousSettings,
+												preparationProfile: value as AiPreparationProfile,
+											}))
+										}}
+										radius="md"
+										classNames={textInputClassNames}
+									/>
+								</Grid.Col>
+
+								<Grid.Col span={{ base: 12, md: 6 }}>
+									<Select
+										label="Perfil de orcamento"
+										data={AI_BUDGET_PROFILE_OPTIONS}
+										value={aiRecipeGenerationSettings.budgetProfile}
+										onChange={(value) => {
+											if (!value) {
+												return
+											}
+
+											setAiRecipeGenerationSettings((previousSettings) => ({
+												...previousSettings,
+												budgetProfile: value as AiBudgetProfile,
+											}))
+										}}
+										radius="md"
+										classNames={textInputClassNames}
+									/>
+								</Grid.Col>
+
+								<Grid.Col span={{ base: 12, md: 6 }}>
+									<NumberInput
+										label="Quantidade de receitas"
+										value={aiRecipeGenerationSettings.recipeCount}
+										onChange={(value) => {
+											setAiRecipeGenerationSettings((previousSettings) => ({
+												...previousSettings,
+												recipeCount: typeof value === 'number' && Number.isFinite(value)
+													? Math.min(Math.max(Math.round(value), 2), 8)
+													: previousSettings.recipeCount,
+											}))
+										}}
+										min={2}
+										max={8}
+										step={1}
+										allowDecimal={false}
+										radius="md"
+										classNames={textInputClassNames}
+									/>
+								</Grid.Col>
+
+								<Grid.Col span={{ base: 12, md: 6 }}>
+									<NumberInput
+										label="Maximo de ingredientes/receita"
+										value={aiRecipeGenerationSettings.maxIngredientsPerRecipe}
+										onChange={(value) => {
+											setAiRecipeGenerationSettings((previousSettings) => ({
+												...previousSettings,
+												maxIngredientsPerRecipe: typeof value === 'number' && Number.isFinite(value)
+													? Math.min(Math.max(Math.round(value), 3), 12)
+													: previousSettings.maxIngredientsPerRecipe,
+											}))
+										}}
+										min={3}
+										max={12}
+										step={1}
+										allowDecimal={false}
+										radius="md"
+										classNames={textInputClassNames}
+									/>
+								</Grid.Col>
+
+								<Grid.Col span={{ base: 12, md: 6 }}>
+									<Select
+										label="Modelo IA (opcional)"
+										placeholder={backendDefaultAiModel ? `Padrao: ${backendDefaultAiModel}` : 'Padrao do backend'}
+										data={aiModelOptions}
+										value={aiRecipeGenerationSettings.modelOverride}
+										onChange={(value) => {
+											setAiRecipeGenerationSettings((previousSettings) => ({
+												...previousSettings,
+												modelOverride: value,
+											}))
+										}}
+										searchable
+										clearable
+										disabled={isLoadingAiModels}
+										radius="md"
+										classNames={textInputClassNames}
+									/>
+								</Grid.Col>
+
+								<Grid.Col span={12}>
+									<TextInput
+										label="Preferir ingredientes (opcional)"
+										placeholder="Ex.: frango, iogurte natural, aveia, batata doce"
+										value={aiRecipeGenerationSettings.preferredFoods}
+										onChange={(event) => {
+											setAiRecipeGenerationSettings((previousSettings) => ({
+												...previousSettings,
+												preferredFoods: event.currentTarget.value,
+											}))
+										}}
+										radius="md"
+										classNames={textInputClassNames}
+									/>
+								</Grid.Col>
+
+								<Grid.Col span={12}>
+									<TextInput
+										label="Evitar ingredientes (opcional)"
+										placeholder="Ex.: leite, amendoim, farinha de trigo"
+										value={aiRecipeGenerationSettings.restrictedFoods}
+										onChange={(event) => {
+											setAiRecipeGenerationSettings((previousSettings) => ({
+												...previousSettings,
+												restrictedFoods: event.currentTarget.value,
+											}))
+										}}
+										radius="md"
+										classNames={textInputClassNames}
+									/>
+								</Grid.Col>
+
+								<Grid.Col span={12}>
+									<Textarea
+										label="Instrucoes extras (opcional)"
+										placeholder="Ex.: priorizar receitas para marmita, evitar fritura e manter preparo em ate 20 minutos"
+										value={aiRecipeGenerationSettings.extraInstructions}
+										onChange={(event) => {
+											setAiRecipeGenerationSettings((previousSettings) => ({
+												...previousSettings,
+												extraInstructions: event.currentTarget.value,
+											}))
+										}}
+										minRows={3}
+										maxRows={5}
+										autosize
+										radius="md"
+										classNames={textInputClassNames}
+									/>
+								</Grid.Col>
+							</Grid>
+
+							<Group justify="flex-end" mt="xs">
+								<Button
+									type="button"
+									radius="md"
+									classNames={neutralButtonClassNames}
+									onClick={closeAiRecipeSettingsModal}
+									disabled={isGeneratingAiRecipes}
+									className={modalActionButtonSizeClassName}
+								>
+									Cancelar
+								</Button>
+								<Button
+									type="button"
+									radius="md"
+									classNames={primaryButtonClassNames}
+									onClick={handleConfirmAiRecipeGenerate}
+									loading={isGeneratingAiRecipes}
+									className={modalActionButtonSizeClassName}
+								>
+									Gerar receitas
+								</Button>
+							</Group>
+						</Stack>
+					</Box>
+				</Modal>
+
 					{/* OVERLAY GLOBAL DE PROCESSAMENTO: bloqueia interacao enquanto a IA esta rodando. */}
 					{isGeneratingAiMenu ? (
 						<Box className="fixed inset-0 z-[1600]">
@@ -2237,12 +4586,72 @@ export function MenuBuilderPage() {
 								<Text className="mt-1 text-sm text-cyan-100/95 drop-shadow-[0_2px_8px_rgba(0,0,0,0.42)]">
 									{aiGenerationStatusMessage}
 								</Text>
-								<Text className="mt-2 text-xs font-medium text-cyan-100/95 drop-shadow-[0_2px_8px_rgba(0,0,0,0.42)]">
-									Etapa {aiGenerationStep} de {AI_GENERATION_TOTAL_STEPS} | Tempo: {aiGenerationElapsedSeconds}s | Modelo: {effectiveAiModelLabel} | Grupos: {mealGroups.length} | Itens: {totalCurrentMealItems}
-								</Text>
+									<Text className="mt-2 text-xs font-medium text-cyan-100/95 drop-shadow-[0_2px_8px_rgba(0,0,0,0.42)]">
+										Etapa {aiGenerationStep} de {AI_GENERATION_TOTAL_STEPS} | Tempo: {aiGenerationElapsedSeconds}s | Modelo: {effectiveAiMenuModelLabel} | Grupos: {mealGroups.length} | Itens: {totalCurrentMealItems}
+									</Text>
 							</Box>
 						</Box>
 					) : null}
-			</Box>
-		)
-	}
+
+					{isGeneratingAiGuidance ? (
+						<Box className="fixed inset-0 z-[1610]">
+							<LoadingOverlay
+								visible={true}
+								zIndex={1610}
+								overlayProps={{
+									blur: 3,
+									backgroundOpacity: 0.6,
+									color: '#041723',
+								}}
+								loaderProps={{
+									type: 'bars',
+									size: 'xl',
+									color: 'cyan',
+								}}
+							/>
+							<Box className="pointer-events-none absolute left-1/2 top-1/2 z-[1611] w-full max-w-[980px] -translate-x-1/2 px-4 pt-16 text-center">
+								<Text className="text-base font-semibold text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.45)] md:text-lg">
+									Gerando orientacoes para {patient?.name ?? 'paciente'}
+								</Text>
+								<Text className="mt-1 text-sm text-cyan-100/95 drop-shadow-[0_2px_8px_rgba(0,0,0,0.42)]">
+									{aiGuidanceGenerationStatusMessage}
+								</Text>
+									<Text className="mt-2 text-xs font-medium text-cyan-100/95 drop-shadow-[0_2px_8px_rgba(0,0,0,0.42)]">
+										Etapa {aiGuidanceGenerationStep} de {AI_GUIDANCE_GENERATION_TOTAL_STEPS} | Tempo: {aiGuidanceGenerationElapsedSeconds}s | Modelo: {effectiveAiGuidanceModelLabel} | Campos preenchidos: {filledNutritionGuidanceFieldsCount} | Destaques: {aiGuidanceHighlights.length}
+									</Text>
+							</Box>
+						</Box>
+					) : null}
+
+					{isGeneratingAiRecipes ? (
+						<Box className="fixed inset-0 z-[1620]">
+							<LoadingOverlay
+								visible={true}
+								zIndex={1620}
+								overlayProps={{
+									blur: 3,
+									backgroundOpacity: 0.6,
+									color: '#041723',
+								}}
+								loaderProps={{
+									type: 'bars',
+									size: 'xl',
+									color: 'cyan',
+								}}
+							/>
+							<Box className="pointer-events-none absolute left-1/2 top-1/2 z-[1621] w-full max-w-[980px] -translate-x-1/2 px-4 pt-16 text-center">
+								<Text className="text-base font-semibold text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.45)] md:text-lg">
+									Gerando receitas para {patient?.name ?? 'paciente'}
+								</Text>
+								<Text className="mt-1 text-sm text-cyan-100/95 drop-shadow-[0_2px_8px_rgba(0,0,0,0.42)]">
+									{aiRecipeGenerationStatusMessage}
+								</Text>
+									<Text className="mt-2 text-xs font-medium text-cyan-100/95 drop-shadow-[0_2px_8px_rgba(0,0,0,0.42)]">
+										Etapa {aiRecipeGenerationStep} de {AI_RECIPE_GENERATION_TOTAL_STEPS} | Tempo: {aiRecipeGenerationElapsedSeconds}s | Modelo: {effectiveAiRecipeModelLabel} | Receitas: {filledRecipeSuggestionsCount}/{recipeSuggestions.length} | Alimentos base: {selectedFoodsForRecipes.length}
+									</Text>
+							</Box>
+						</Box>
+					) : null}
+				</Box>
+			)
+		}
