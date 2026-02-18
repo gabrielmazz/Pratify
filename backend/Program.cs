@@ -38,6 +38,26 @@ var builder = WebApplication.CreateBuilder(args);
 // Manter em constante evita strings soltas e erro de digitacao.
 const string FrontendCorsPolicy = "FrontendCorsPolicy";
 
+// Compatibilidade com o script ia/env.sh:
+// se LLM_BASE_URL/LLM_MODEL existirem, eles alimentam a secao Ollama.
+if (string.IsNullOrWhiteSpace(builder.Configuration[$"{OllamaOptions.SectionName}:BaseUrl"]))
+{
+    var llmBaseUrl = builder.Configuration["LLM_BASE_URL"];
+    if (!string.IsNullOrWhiteSpace(llmBaseUrl))
+    {
+        builder.Configuration[$"{OllamaOptions.SectionName}:BaseUrl"] = llmBaseUrl;
+    }
+}
+
+if (string.IsNullOrWhiteSpace(builder.Configuration[$"{OllamaOptions.SectionName}:Model"]))
+{
+    var llmModel = builder.Configuration["LLM_MODEL"];
+    if (!string.IsNullOrWhiteSpace(llmModel))
+    {
+        builder.Configuration[$"{OllamaOptions.SectionName}:Model"] = llmModel;
+    }
+}
+
 // AddControllers habilita o modelo MVC baseado em controllers.
 // Sem isso, classes com [ApiController] nao serao descobertas automaticamente.
 builder.Services.AddControllers();
@@ -111,6 +131,30 @@ builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 
 // Servico interno da aplicacao responsavel por gerar tokens JWT.
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+
+// Integracao com Ollama local (IA).
+builder.Services.Configure<OllamaOptions>(builder.Configuration.GetSection(OllamaOptions.SectionName));
+builder.Services.AddHttpClient<IOllamaService, OllamaService>((serviceProvider, client) =>
+{
+    var options = serviceProvider
+        .GetRequiredService<Microsoft.Extensions.Options.IOptions<OllamaOptions>>()
+        .Value;
+
+    var baseUrl = string.IsNullOrWhiteSpace(options.BaseUrl)
+        ? "http://127.0.0.1:11434"
+        : options.BaseUrl.Trim();
+
+    if (!baseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+        && !baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+    {
+        baseUrl = $"http://{baseUrl}";
+    }
+
+    client.BaseAddress = new Uri($"{baseUrl.TrimEnd('/')}/");
+
+    var timeoutSeconds = options.TimeoutSeconds <= 0 ? 120 : options.TimeoutSeconds;
+    client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+});
 
 // Configura autenticacao da API com esquema JWT Bearer.
 // Todo token recebido no header Authorization: Bearer <token>
