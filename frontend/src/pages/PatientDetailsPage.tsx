@@ -291,6 +291,11 @@ export function PatientDetailsPage() {
 		label: ButtonStyle.label,
 	}
 
+	const neutralButtonClassNames = {
+		root: ButtonStyle.neutralRoot,
+		label: ButtonStyle.neutralLabel,
+	}
+
 	const parsedPatientId = useMemo(() => {
 		if (!patientId) {
 			return null
@@ -429,11 +434,25 @@ export function PatientDetailsPage() {
 						className="bg-[hsl(var(--card))]"
 						contentClassName="gap-5 overflow-auto"
 						footer={(
-							<Group justify="flex-end">
+							<Group justify="space-between" className="w-full">
 								<Button
 									type="button"
 									radius="md"
 									classNames={buttonClassNames}
+									onClick={() => {
+										if (parsedPatientId !== null) {
+											navigate(`/patients/${parsedPatientId}/menu`)
+										}
+									}}
+									disabled={parsedPatientId === null}
+								>
+									Montar cardapio
+								</Button>
+
+								<Button
+									type="button"
+									radius="md"
+									classNames={neutralButtonClassNames}
 									onClick={() => navigate('/patients')}
 								>
 									Voltar para lista

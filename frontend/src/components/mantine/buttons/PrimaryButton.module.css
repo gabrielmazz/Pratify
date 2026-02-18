@@ -5,6 +5,14 @@
   transition: background-color 120ms ease, transform 120ms ease;
 }
 
+/* .rootMenu -> É um botão com tamanho necessário para ficar igual aos inputs */
+.rootMenu {
+  height: 35px;
+  border: 1px solid transparent;
+  background-color: var(--color4);
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+
 .root:hover {
   background-color: var(--color5);
 }
@@ -23,6 +31,15 @@
 /* Botão neutro (uso geral para ações normais, como "Cancelar") */
 .neutralRoot {
   height: 44px;
+  border: 1px solid #c7d8e1;
+  background-color: #ffffff;
+  color: #334155;
+  transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+/* .neutralRootMenu -> É um botão com tamanho necessário para ficar igual aos inputs */
+.neutralRootMenu {
+  height: 35px;
   border: 1px solid #c7d8e1;
   background-color: #ffffff;
   color: #334155;

@@ -74,3 +74,21 @@ Content-Type: image/jpeg
 ------WebKitFormBoundary7MA4YWxkTrZu0gW--
 
 ###
+# Consulta de modelos carregados no Ollama via backend.
+GET {{backend_HostAddress}}/api/ai/models
+Authorization: Bearer {{token}}
+Accept: application/json
+
+###
+# Chat com IA (Ollama) via backend.
+POST {{backend_HostAddress}}/api/ai/chat
+Authorization: Bearer {{token}}
+Content-Type: application/json
+Accept: application/json
+
+{
+  "prompt": "Crie uma sugestao de cafe da manha para paciente com foco em ganho muscular.",
+  "model": "qwen2.5:7b-instruct"
+}
+
+###
