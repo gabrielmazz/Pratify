@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BlobProvider, Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
+import { BlobProvider, Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
 import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy, type RenderTask } from 'pdfjs-dist'
 import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import pratifyLogoBlackSrc from '../../../assets/logo/PRATIFY_transparente_preto_footer.png'
 
 GlobalWorkerOptions.workerSrc = pdfWorkerSrc
 
@@ -111,12 +112,24 @@ export type MealPlanPdfNutritionPreviewData = {
 	infographicRows: MealPlanPdfInfographicRow[]
 }
 
+export type MealPlanPdfNutritionistProfile = {
+	name: string
+	email: string | null
+	phone: string | null
+	crn: string | null
+	institution: string | null
+	city: string | null
+	state: string | null
+	profileImage: string | null
+}
+
 type MealPlanPdfCanvasPreviewProps = {
 	patient: MealPlanPdfPatient
 	mealGroups: MealPlanPdfMealGroup[]
 	orientationTips?: string[]
 	nutritionPreview?: MealPlanPdfNutritionPreviewData | null
 	recipeSuggestions?: MealPlanPdfRecipeSuggestion[]
+	nutritionistProfile?: MealPlanPdfNutritionistProfile | null
 }
 
 type MealTableRow = {
@@ -168,7 +181,7 @@ const pdfStyles = StyleSheet.create({
 	reportPage: {
 		paddingTop: 26,
 		paddingHorizontal: 30,
-		paddingBottom: 30,
+		paddingBottom: 62,
 		fontFamily: 'Helvetica',
 		fontSize: 10.2,
 		color: '#0f172a',
@@ -274,10 +287,90 @@ const pdfStyles = StyleSheet.create({
 		fontSize: 9,
 		color: '#155e75',
 	},
+	reportProfessionalCard: {
+		borderWidth: 1,
+		borderColor: '#b9ddee',
+		backgroundColor: '#edf7fc',
+		borderRadius: 10,
+		paddingVertical: 10,
+		paddingHorizontal: 12,
+		marginBottom: 10,
+		flexDirection: 'row',
+		alignItems: 'center',
+	},
+	reportProfessionalImageFrame: {
+		width: 62,
+		height: 62,
+		borderRadius: 6,
+		borderWidth: 1.2,
+		borderColor: '#8fbfd5',
+		backgroundColor: '#d9ecf6',
+		overflow: 'hidden',
+		justifyContent: 'center',
+		alignItems: 'center',
+		marginRight: 12,
+	},
+	reportProfessionalImage: {
+		width: '100%',
+		height: '100%',
+		objectFit: 'cover',
+	},
+	reportProfessionalImageFallback: {
+		fontSize: 7.7,
+		textAlign: 'center',
+		color: '#0b4f77',
+		paddingHorizontal: 4,
+		lineHeight: 1.2,
+	},
+	reportProfessionalInfo: {
+		flexGrow: 1,
+	},
+	reportProfessionalLabel: {
+		fontSize: 8.4,
+		textTransform: 'uppercase',
+		letterSpacing: 0.7,
+		color: '#336b84',
+		marginBottom: 2,
+	},
+	reportProfessionalName: {
+		fontFamily: 'Helvetica-Bold',
+		fontSize: 12,
+		color: '#0b4f77',
+		marginBottom: 2,
+	},
+	reportProfessionalSubtitle: {
+		fontSize: 8.9,
+		color: '#334155',
+		marginTop: 3,
+		marginBottom: 2,
+	},
+	reportProfessionalChipContainer: {
+		flexDirection: 'row',
+		flexWrap: 'wrap',
+		marginTop: 6,
+	},
+	reportProfessionalChip: {
+		borderWidth: 1,
+		borderColor: '#a9d2e4',
+		backgroundColor: '#ffffff',
+		borderRadius: 4,
+		paddingHorizontal: 6,
+		paddingVertical: 3,
+		marginRight: 7,
+		marginBottom: 6,
+		fontSize: 8.4,
+		color: '#0f5a7a',
+	},
+	reportTopSeparator: {
+		height: 2,
+		backgroundColor: '#d9e2e8',
+		borderRadius: 2,
+		marginBottom: 10,
+	},
 	page: {
 		paddingTop: 24,
 		paddingHorizontal: 26,
-		paddingBottom: 28,
+		paddingBottom: 62,
 		fontFamily: 'Helvetica',
 		fontSize: 10,
 		color: '#0f172a',
@@ -448,11 +541,42 @@ const pdfStyles = StyleSheet.create({
 		fontSize: 9.3,
 		lineHeight: 1.35,
 	},
-	footerText: {
-		marginTop: 10,
+	footerRow: {
+		position: 'absolute',
+		left: 0,
+		right: 0,
+		bottom: 0,
+		borderTopWidth: 1,
+		borderTopColor: '#d7e5ec',
+		paddingTop: 6,
+		paddingBottom: 8,
+		paddingHorizontal: 18,
+		flexDirection: 'row',
+		alignItems: 'center',
+		backgroundColor: '#ffffff',
+	},
+	footerLeftColumn: {
+		width: 200,
+		alignItems: 'flex-start',
+	},
+	footerCenterText: {
+		flexGrow: 1,
 		fontSize: 8.7,
-		color: '#64748b',
+		color: '#000000',
 		textAlign: 'center',
+	},
+	footerRightColumn: {
+		width: 200,
+		alignItems: 'flex-end',
+	},
+	footerPageNumber: {
+		fontSize: 8.5,
+		color: '#000000',
+	},
+	footerLogo: {
+		width: 50,
+		height: 28,
+		objectFit: 'contain',
 	},
 	adequacyIntroText: {
 		fontSize: 8.9,
@@ -1150,6 +1274,21 @@ function formatDate(dateValue: string) {
 	return parsedDate.toLocaleDateString('pt-BR')
 }
 
+function formatNutritionistCrn(crnValue: string | null | undefined) {
+	const normalizedCrn = normalizeTextField(crnValue ?? '')
+	if (!normalizedCrn) {
+		return ''
+	}
+
+	return normalizedCrn.toUpperCase().includes('CRN') ? normalizedCrn : `CRN ${normalizedCrn}`
+}
+
+function formatNutritionistLocation(cityValue: string | null | undefined, stateValue: string | null | undefined) {
+	const normalizedCity = normalizeTextField(cityValue ?? '')
+	const normalizedState = normalizeTextField(stateValue ?? '')
+	return [normalizedCity, normalizedState].filter((part) => part.length > 0).join(' - ')
+}
+
 function calculateAgeFromIsoDate(dateValue: string) {
 	const birthDate = new Date(dateValue)
 	if (Number.isNaN(birthDate.getTime())) {
@@ -1574,6 +1713,27 @@ function buildOrientationTips(patient: MealPlanPdfPatient) {
 	return tips
 }
 
+function PdfReportFooter({ patientName, generatedAt }: { patientName: string; generatedAt: string }) {
+	return (
+		<View fixed style={pdfStyles.footerRow}>
+			<View style={pdfStyles.footerLeftColumn}>
+				<Image src={pratifyLogoBlackSrc} style={pdfStyles.footerLogo} />
+			</View>
+
+			<Text style={pdfStyles.footerCenterText}>
+				Paciente: {patientName} | Data de emissao: {formatDate(generatedAt)}
+			</Text>
+
+			<View style={pdfStyles.footerRightColumn}>
+				<Text
+					style={pdfStyles.footerPageNumber}
+					render={({ pageNumber, totalPages }) => `Pagina ${pageNumber}/${totalPages}`}
+				/>
+			</View>
+		</View>
+	)
+}
+
 function MealPlanPdfDocument({
 	patient,
 	mealGroups,
@@ -1581,6 +1741,7 @@ function MealPlanPdfDocument({
 	orientationTips,
 	nutritionPreview,
 	recipeSuggestions,
+	nutritionistProfile,
 }: {
 	patient: MealPlanPdfPatient
 	mealGroups: MealPlanPdfMealGroup[]
@@ -1588,6 +1749,7 @@ function MealPlanPdfDocument({
 	orientationTips?: string[]
 	nutritionPreview?: MealPlanPdfNutritionPreviewData | null
 	recipeSuggestions?: MealPlanPdfRecipeSuggestion[]
+	nutritionistProfile?: MealPlanPdfNutritionistProfile | null
 }) {
 	const patientAge = calculateAgeFromIsoDate(patient.birthDate)
 	const formattedGoals = formatGoalList(patient.goal) || '-'
@@ -1672,10 +1834,57 @@ function MealPlanPdfDocument({
 	const driAudienceLabel = patient.gender === 'female'
 		? 'DRI (Mulheres de 19-30 anos)'
 		: 'DRI (Homens de 19-30 anos)'
+	const nutritionistName = normalizeTextField(nutritionistProfile?.name ?? '') || 'Nutricionista responsavel'
+	const nutritionistEmail = normalizeTextField(nutritionistProfile?.email ?? '')
+	const nutritionistPhone = normalizeTextField(nutritionistProfile?.phone ?? '')
+	const nutritionistCrnLabel = formatNutritionistCrn(nutritionistProfile?.crn)
+	const nutritionistInstitution = normalizeTextField(nutritionistProfile?.institution ?? '')
+	const nutritionistLocation = formatNutritionistLocation(
+		nutritionistProfile?.city,
+		nutritionistProfile?.state,
+	)
+	const nutritionistIdentityLabel = [nutritionistInstitution, nutritionistCrnLabel]
+		.filter((part) => part.length > 0)
+		.join(' | ') || 'Plano alimentar personalizado'
 
 	return (
 			<Document title={`Plano alimentar - ${patient.name}`}>
 				<Page size="A4" style={pdfStyles.reportPage}>
+					<View style={pdfStyles.reportProfessionalCard}>
+						<View style={pdfStyles.reportProfessionalImageFrame}>
+							{nutritionistProfile?.profileImage ? (
+								<Image
+									src={nutritionistProfile.profileImage}
+									style={pdfStyles.reportProfessionalImage}
+								/>
+							) : (
+								<Text style={pdfStyles.reportProfessionalImageFallback}>
+									Sem foto
+								</Text>
+							)}
+						</View>
+
+						<View style={pdfStyles.reportProfessionalInfo}>
+							<Text style={pdfStyles.reportProfessionalLabel}>Nutricionista responsavel</Text>
+							<Text style={pdfStyles.reportProfessionalName}>{nutritionistName}</Text>
+							<Text style={pdfStyles.reportProfessionalSubtitle}>{nutritionistIdentityLabel}</Text>
+
+							<View style={pdfStyles.reportProfessionalChipContainer}>
+								{nutritionistEmail ? (
+									<Text style={pdfStyles.reportProfessionalChip}>Email: {nutritionistEmail}</Text>
+								) : null}
+								{nutritionistPhone ? (
+									<Text style={pdfStyles.reportProfessionalChip}>Contato: {nutritionistPhone}</Text>
+								) : null}
+								{nutritionistLocation ? (
+									<Text style={pdfStyles.reportProfessionalChip}>Local: {nutritionistLocation}</Text>
+								) : null}
+							</View>
+						</View>
+					</View>
+
+					<View style={pdfStyles.reportTopSeparator} />
+
 					<View style={pdfStyles.reportHeaderCard}>
 						<Text style={pdfStyles.reportTitle}>RELATORIO NUTRICIONAL</Text>
 						<Text style={pdfStyles.reportSubtitle}>
@@ -1694,7 +1903,6 @@ function MealPlanPdfDocument({
 						<View style={pdfStyles.reportInfoChipContainer}>
 							<Text style={pdfStyles.reportInfoChip}>Sexo: {formatGender(patient.gender)}</Text>
 							<Text style={pdfStyles.reportInfoChip}>Atividade: {formattedActivityLevel}</Text>
-							<Text style={pdfStyles.reportInfoChip}>Emissao: {formatDate(generatedAt)}</Text>
 						</View>
 					</View>
 
@@ -1787,6 +1995,8 @@ function MealPlanPdfDocument({
 							<Text style={pdfStyles.reportInlineRegular}>{formattedMedicalConditions}</Text>
 						</Text>
 					</View>
+
+					<PdfReportFooter patientName={patient.name} generatedAt={generatedAt} />
 				</Page>
 
 			<Page size="A4" style={pdfStyles.page}>
@@ -1848,9 +2058,7 @@ function MealPlanPdfDocument({
 					))}
 				</View>
 
-				<Text style={pdfStyles.footerText}>
-					Paciente: {patient.name} | Data de emissao: {formatDate(generatedAt)}
-				</Text>
+				<PdfReportFooter patientName={patient.name} generatedAt={generatedAt} />
 			</Page>
 
 			<Page size="A4" style={pdfStyles.page}>
@@ -1869,9 +2077,7 @@ function MealPlanPdfDocument({
 					))}
 				</View>
 
-				<Text style={pdfStyles.footerText}>
-					Paciente: {patient.name} | Data de emissao: {formatDate(generatedAt)}
-				</Text>
+				<PdfReportFooter patientName={patient.name} generatedAt={generatedAt} />
 			</Page>
 
 			<Page size="A4" style={pdfStyles.page}>
@@ -1983,9 +2189,7 @@ function MealPlanPdfDocument({
 					Essas receitas sao orientativas e podem ser ajustadas pelo nutricionista conforme rotina e preferencias do paciente.
 				</Text>
 
-				<Text style={pdfStyles.footerText}>
-					Paciente: {patient.name} | Data de emissao: {formatDate(generatedAt)}
-				</Text>
+				<PdfReportFooter patientName={patient.name} generatedAt={generatedAt} />
 			</Page>
 
 			<Page size="A4" style={pdfStyles.page}>
@@ -2119,9 +2323,7 @@ function MealPlanPdfDocument({
 					)}
 				</View>
 
-				<Text style={pdfStyles.footerText}>
-					Paciente: {patient.name} | Data de emissao: {formatDate(generatedAt)}
-				</Text>
+				<PdfReportFooter patientName={patient.name} generatedAt={generatedAt} />
 			</Page>
 
 			<Page size="A4" style={pdfStyles.page}>
@@ -2294,9 +2496,7 @@ function MealPlanPdfDocument({
 					<Text style={[pdfStyles.distributionReferenceCell, pdfStyles.distributionQuantityCol, pdfStyles.distributionReferenceCellCenter, pdfStyles.distributionReferenceCellLast]}>-</Text>
 				</View>
 
-				<Text style={pdfStyles.footerText}>
-					Paciente: {patient.name} | Data de emissao: {formatDate(generatedAt)}
-				</Text>
+				<PdfReportFooter patientName={patient.name} generatedAt={generatedAt} />
 			</Page>
 
 			<Page size="A4" style={pdfStyles.page}>
@@ -2369,9 +2569,7 @@ function MealPlanPdfDocument({
 					Barras verdes indicam referencia atendida; vermelhas indicam abaixo do minimo ou acima do limite.
 				</Text>
 
-				<Text style={pdfStyles.footerText}>
-					Paciente: {patient.name} | Data de emissao: {formatDate(generatedAt)}
-				</Text>
+				<PdfReportFooter patientName={patient.name} generatedAt={generatedAt} />
 			</Page>
 		</Document>
 	)
@@ -2600,7 +2798,14 @@ function PdfCanvasRenderer({
 	)
 }
 
-export function MealPlanPdfCanvasPreview({ patient, mealGroups, orientationTips, nutritionPreview, recipeSuggestions }: MealPlanPdfCanvasPreviewProps) {
+export function MealPlanPdfCanvasPreview({
+	patient,
+	mealGroups,
+	orientationTips,
+	nutritionPreview,
+	recipeSuggestions,
+	nutritionistProfile,
+}: MealPlanPdfCanvasPreviewProps) {
 	const sanitizedMealGroups = useMemo(
 		() => sanitizeMealGroups(mealGroups),
 		[mealGroups],
@@ -2619,9 +2824,18 @@ export function MealPlanPdfCanvasPreview({ patient, mealGroups, orientationTips,
 					orientationTips={orientationTips}
 					nutritionPreview={nutritionPreview}
 					recipeSuggestions={recipeSuggestions}
+					nutritionistProfile={nutritionistProfile}
 				/>
 			),
-		[generatedAt, nutritionPreview, orientationTips, patient, recipeSuggestions, sanitizedMealGroups],
+		[
+			generatedAt,
+			nutritionPreview,
+			nutritionistProfile,
+			orientationTips,
+			patient,
+			recipeSuggestions,
+			sanitizedMealGroups,
+		],
 	)
 
 	return (
