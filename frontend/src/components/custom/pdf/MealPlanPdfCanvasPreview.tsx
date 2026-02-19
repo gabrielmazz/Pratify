@@ -123,6 +123,13 @@ export type MealPlanPdfNutritionistProfile = {
 	profileImage: string | null
 }
 
+export type MealPlanPdfBlobState = {
+	url: string | null
+	isGeneratingBlob: boolean
+	generationErrorMessage: string | null
+	downloadFileName: string
+}
+
 type MealPlanPdfCanvasPreviewProps = {
 	patient: MealPlanPdfPatient
 	mealGroups: MealPlanPdfMealGroup[]
@@ -130,6 +137,8 @@ type MealPlanPdfCanvasPreviewProps = {
 	nutritionPreview?: MealPlanPdfNutritionPreviewData | null
 	recipeSuggestions?: MealPlanPdfRecipeSuggestion[]
 	nutritionistProfile?: MealPlanPdfNutritionistProfile | null
+	showDownloadButton?: boolean
+	onPdfBlobStateChange?: (state: MealPlanPdfBlobState) => void
 }
 
 type MealTableRow = {
@@ -146,6 +155,7 @@ type PdfCanvasRendererProps = {
 	isGeneratingBlob: boolean
 	generationErrorMessage: string | null
 	downloadFileName: string
+	showDownloadButton: boolean
 }
 
 const GOAL_LABELS: Record<string, string> = {
@@ -296,7 +306,7 @@ const pdfStyles = StyleSheet.create({
 		paddingHorizontal: 12,
 		marginBottom: 10,
 		flexDirection: 'row',
-		alignItems: 'center',
+		alignItems: 'flex-start',
 	},
 	reportProfessionalImageFrame: {
 		width: 62,
@@ -2580,6 +2590,7 @@ function PdfCanvasRenderer({
 	isGeneratingBlob,
 	generationErrorMessage,
 	downloadFileName,
+	showDownloadButton,
 }: PdfCanvasRendererProps) {
 	const canvasViewportRef = useRef<HTMLDivElement | null>(null)
 	const canvasHostRef = useRef<HTMLDivElement | null>(null)
@@ -2775,27 +2786,66 @@ function PdfCanvasRenderer({
 				) : null}
 			</div>
 
-			<div className="border-t border-[#d7e5ec] px-4 py-3">
-				{pdfUrl ? (
-					<a
-						href={pdfUrl}
-						download={downloadFileName}
-						className="inline-flex items-center rounded-md border border-[#98c5d7] bg-white px-3 py-1.5 text-xs font-semibold text-[#16607f] transition-colors hover:bg-[#f0f8fc]"
-					>
-						Baixar PDF local
-					</a>
-				) : (
-					<button
-						type="button"
-						disabled
-						className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500"
-					>
-						Baixar PDF local
-					</button>
-				)}
-			</div>
+			{showDownloadButton ? (
+				<div className="border-t border-[#d7e5ec] px-4 py-3">
+					{pdfUrl ? (
+						<a
+							href={pdfUrl}
+							download={downloadFileName}
+							className="inline-flex items-center rounded-md border border-[#98c5d7] bg-white px-3 py-1.5 text-xs font-semibold text-[#16607f] transition-colors hover:bg-[#f0f8fc]"
+						>
+							Baixar PDF local
+						</a>
+					) : (
+						<button
+							type="button"
+							disabled
+							className="inline-flex items-center rounded-md border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500"
+						>
+							Baixar PDF local
+						</button>
+					)}
+				</div>
+			) : null}
 		</div>
 	)
+}
+
+type PdfBlobStateBridgeProps = {
+	pdfUrl: string | null
+	isGeneratingBlob: boolean
+	generationErrorMessage: string | null
+	downloadFileName: string
+	onPdfBlobStateChange?: (state: MealPlanPdfBlobState) => void
+}
+
+function PdfBlobStateBridge({
+	pdfUrl,
+	isGeneratingBlob,
+	generationErrorMessage,
+	downloadFileName,
+	onPdfBlobStateChange,
+}: PdfBlobStateBridgeProps) {
+	useEffect(() => {
+		if (!onPdfBlobStateChange) {
+			return
+		}
+
+		onPdfBlobStateChange({
+			url: pdfUrl,
+			isGeneratingBlob,
+			generationErrorMessage,
+			downloadFileName,
+		})
+	}, [
+		downloadFileName,
+		generationErrorMessage,
+		isGeneratingBlob,
+		onPdfBlobStateChange,
+		pdfUrl,
+	])
+
+	return null
 }
 
 export function MealPlanPdfCanvasPreview({
@@ -2805,6 +2855,8 @@ export function MealPlanPdfCanvasPreview({
 	nutritionPreview,
 	recipeSuggestions,
 	nutritionistProfile,
+	showDownloadButton = true,
+	onPdfBlobStateChange,
 }: MealPlanPdfCanvasPreviewProps) {
 	const sanitizedMealGroups = useMemo(
 		() => sanitizeMealGroups(mealGroups),
@@ -2840,14 +2892,29 @@ export function MealPlanPdfCanvasPreview({
 
 	return (
 		<BlobProvider document={pdfDocumentElement}>
-			{({ url, loading, error }) => (
-				<PdfCanvasRenderer
-					pdfUrl={url ?? null}
-					isGeneratingBlob={loading}
-					generationErrorMessage={error instanceof Error ? error.message : null}
-					downloadFileName={downloadFileName}
-				/>
-			)}
+			{({ url, loading, error }) => {
+				const pdfUrl = url ?? null
+				const generationErrorMessage = error instanceof Error ? error.message : null
+
+				return (
+					<>
+						<PdfBlobStateBridge
+							pdfUrl={pdfUrl}
+							isGeneratingBlob={loading}
+							generationErrorMessage={generationErrorMessage}
+							downloadFileName={downloadFileName}
+							onPdfBlobStateChange={onPdfBlobStateChange}
+						/>
+						<PdfCanvasRenderer
+							pdfUrl={pdfUrl}
+							isGeneratingBlob={loading}
+							generationErrorMessage={generationErrorMessage}
+							downloadFileName={downloadFileName}
+							showDownloadButton={showDownloadButton}
+						/>
+					</>
+				)
+			}}
 		</BlobProvider>
 	)
 }

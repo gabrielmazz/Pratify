@@ -29,6 +29,10 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Serilog;
+using Serilog.Context;
+using Serilog.Events;
+using Serilog.Sinks.SystemConsole.Themes;
 
 // Cria o builder principal da aplicacao ASP.NET Core.
 // O builder concentra configuracao, servicos e ambiente.
@@ -57,6 +61,34 @@ if (string.IsNullOrWhiteSpace(builder.Configuration[$"{OllamaOptions.SectionName
         builder.Configuration[$"{OllamaOptions.SectionName}:Model"] = llmModel;
     }
 }
+
+// Logging padronizado para toda a API:
+// - Saida colorida no console.
+// - Template com timestamp + nivel + categoria.
+// - Nivel dos logs SQL controlado por Logging:ShowEfSql no appsettings.
+var showEfSqlInLogs = builder.Configuration.GetValue<bool?>("Logging:ShowEfSql") ?? false;
+builder.Host.UseSerilog((context, _, loggerConfiguration) =>
+{
+    var minimumLevel = context.HostingEnvironment.IsDevelopment()
+        ? LogEventLevel.Information
+        : LogEventLevel.Warning;
+    var efSqlLevel = showEfSqlInLogs
+        ? LogEventLevel.Information
+        : LogEventLevel.Warning;
+
+    loggerConfiguration
+        .MinimumLevel.Is(minimumLevel)
+        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+        .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
+        .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+        .MinimumLevel.Override("Microsoft.EntityFrameworkCore", efSqlLevel)
+        .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", efSqlLevel)
+        .Enrich.FromLogContext()
+        .Enrich.WithProperty("Application", "nutrisaas-backend")
+        .WriteTo.Console(
+            theme: AnsiConsoleTheme.Code,
+            outputTemplate: "[{Timestamp:HH:mm:ss.fff} {Level:u3}] [{Application}] [{SourceContext}] {Message:lj}{NewLine}{Exception}");
+});
 
 // AddControllers habilita o modelo MVC baseado em controllers.
 // Sem isso, classes com [ApiController] nao serao descobertas automaticamente.
@@ -220,6 +252,38 @@ if (app.Environment.IsDevelopment())
 // Redireciona HTTP para HTTPS quando aplicavel.
 app.UseHttpsRedirection();
 
+// Enriquecimento de contexto por requisicao + log resumido de cada request.
+app.Use(async (httpContext, next) =>
+{
+    using (LogContext.PushProperty("RequestId", httpContext.TraceIdentifier))
+    {
+        await next();
+    }
+});
+app.UseSerilogRequestLogging(options =>
+{
+    options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} -> {StatusCode} em {Elapsed:0.0000} ms";
+    options.GetLevel = (httpContext, _, exception) =>
+    {
+        if (exception is not null || httpContext.Response.StatusCode >= 500)
+        {
+            return LogEventLevel.Error;
+        }
+
+        if (httpContext.Response.StatusCode >= 400)
+        {
+            return LogEventLevel.Warning;
+        }
+
+        return LogEventLevel.Information;
+    };
+    options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+    {
+        diagnosticContext.Set("RequestId", httpContext.TraceIdentifier);
+        diagnosticContext.Set("ClientIp", httpContext.Connection.RemoteIpAddress?.ToString() ?? "-");
+    };
+});
+
 // Aplica regras de CORS antes dos endpoints.
 app.UseCors(FrontendCorsPolicy);
 
@@ -234,3 +298,4 @@ app.MapControllers();
 
 // Inicia a API.
 app.Run();
+Log.CloseAndFlush();
