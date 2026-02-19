@@ -27,6 +27,7 @@ public class AppDbContext : DbContext
     // _context.Users.Add(...), _context.Users.FirstOrDefaultAsync(...)
     public DbSet<User> Users => Set<User>();
     public DbSet<Patient> Patients => Set<Patient>();
+    public DbSet<MenuPatient> MenuPatients => Set<MenuPatient>();
 
     // OnModelCreating centraliza regras de mapeamento da entidade.
     // Aqui definimos nomes de tabela, chaves, tipos, restricoes e indices.
@@ -190,6 +191,59 @@ public class AppDbContext : DbContext
                 .IsRequired();
 
             e.Property(x => x.TDEE)
+                .IsRequired();
+        });
+
+        modelBuilder.Entity<MenuPatient>(e =>
+        {
+            e.ToTable("menu_patients");
+            e.HasKey(x => x.Id);
+
+            e.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(menu => menu.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne<Patient>()
+                .WithMany()
+                .HasForeignKey(menu => menu.PatientId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Historico de rascunhos por paciente/usuario.
+            e.HasIndex(menu => new { menu.UserId, menu.PatientId });
+            e.HasIndex(menu => new { menu.UserId, menu.PatientId, menu.UpdatedAt });
+
+            e.Property(x => x.MealGroupsJson)
+                .IsRequired()
+                .HasColumnType("jsonb");
+
+            e.Property(x => x.NutritionGuidanceJson)
+                .IsRequired()
+                .HasColumnType("jsonb");
+
+            e.Property(x => x.RecipeSuggestionsJson)
+                .IsRequired()
+                .HasColumnType("jsonb");
+
+            e.Property(x => x.AiGuidanceHighlightsJson)
+                .IsRequired()
+                .HasColumnType("jsonb");
+
+            e.Property(x => x.AiGenerationSettingsJson)
+                .IsRequired()
+                .HasColumnType("jsonb");
+
+            e.Property(x => x.AiRecipeGenerationSettingsJson)
+                .IsRequired()
+                .HasColumnType("jsonb");
+
+            e.Property(x => x.ActiveDataEntryStep)
+                .IsRequired();
+
+            e.Property(x => x.CreatedAt)
+                .IsRequired();
+
+            e.Property(x => x.UpdatedAt)
                 .IsRequired();
         });
 

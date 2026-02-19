@@ -1,17 +1,23 @@
-import { useEffect, useMemo, useState, type DragEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react'
 import { ActionIcon, Box, Button, Divider, Fieldset, Grid, Group, LoadingOverlay, Modal, NumberInput, Select, Skeleton, Spoiler, Stack, Stepper, Text, TextInput, Textarea } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { useDebouncedValue } from '@mantine/hooks'
-import { useNavigate, useParams } from 'react-router-dom'
-import { MdAdd, MdArrowBack, MdArrowForward, MdAutoAwesome, MdDeleteOutline, MdDragIndicator } from 'react-icons/md'
+import { IoAlertCircleOutline, IoCheckmarkCircleOutline } from 'react-icons/io5'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { MdAdd, MdArrowBack, MdArrowForward, MdAutoAwesome, MdDeleteOutline, MdDownload, MdDragIndicator, MdSave } from 'react-icons/md'
 
 import TextInputStyle from '../components/mantine/inputs/TextInput.module.css'
 import ButtonStyle from '../components/mantine/buttons/PrimaryButton.module.css'
+import NotificationStyle from '../components/mantine/notifications/Notification.module.css'
 
 import { SideBar } from '../components/custom/sidebar/SideBar'
 import { PageInfo } from '../components/custom/pageInfo/PageInfo'
 import { PageContentContainer } from '../components/custom/pageContentContainer/PageContentContainer'
-import { MealPlanPdfCanvasPreview, type MealPlanPdfNutritionistProfile } from '../components/custom/pdf/MealPlanPdfCanvasPreview'
+import {
+	MealPlanPdfCanvasPreview,
+	type MealPlanPdfBlobState,
+	type MealPlanPdfNutritionistProfile,
+} from '../components/custom/pdf/MealPlanPdfCanvasPreview'
 
 import { useAuth } from '../auth/AuthContext'
 import { APP_SIDEBAR_ITEMS } from '../lib/sidebarItems'
@@ -277,11 +283,42 @@ type SummaryMetricCardProps = {
 	value: string
 }
 
+type PatientMenuDraftApiResponse = {
+	id: number
+	patientId: number
+	activeDataEntryStep: number
+	mealGroups: MealGroupState[]
+	nutritionGuidance: NutritionGuidanceState
+	aiGuidanceHighlights: string[]
+	recipeSuggestions: RecipeSuggestionState[]
+	aiGenerationSettings: AiGenerationSettingsState
+	aiRecipeGenerationSettings: AiRecipeGenerationSettingsState
+	createdAt: string
+	updatedAt: string
+}
+
+type SavePatientMenuDraftRequest = {
+	activeDataEntryStep: number
+	mealGroups: MealGroupState[]
+	nutritionGuidance: NutritionGuidanceState
+	aiGuidanceHighlights: string[]
+	recipeSuggestions: RecipeSuggestionState[]
+	aiGenerationSettings: AiGenerationSettingsState
+	aiRecipeGenerationSettings: AiRecipeGenerationSettingsState
+}
+
+type MenuBuilderLocationState = {
+	prefillMenuDraft?: PatientMenuDraftApiResponse
+	prefillSource?: 'saved-history' | 'new-empty'
+}
+
 // CONFIGURACOES E CONSTANTES:
 // Textos padrao, labels de opcoes e defaults usados em toda a pagina.
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '') ?? ''
 const LOAD_PATIENT_ERROR_MESSAGE = 'Nao foi possivel carregar os dados do paciente.'
+const LOAD_SAVED_MENU_ERROR_MESSAGE = 'Nao foi possivel carregar o cardapio salvo.'
 const GENERATE_MENU_ERROR_MESSAGE = 'Nao foi possivel gerar o cardapio com IA.'
+const SAVE_MENU_ERROR_MESSAGE = 'Nao foi possivel salvar o cardapio.'
 const DEFAULT_MEAL_GROUP_LABELS = [
 	'Cafe da manha',
 	'Lanche da manha',
@@ -405,6 +442,51 @@ const primaryButtonClassNames = {
 const neutralButtonClassNames = {
 	root: ButtonStyle.neutralRootMenu,
 	label: ButtonStyle.neutralLabel,
+}
+
+const notificationClassNames = {
+	root: NotificationStyle.root,
+	title: NotificationStyle.title,
+	description: NotificationStyle.description,
+	icon: NotificationStyle.icon,
+	closeButton: NotificationStyle.closeButton,
+}
+
+function showSuccessNotification(title: string, message: string) {
+	notifications.show({
+		title,
+		message,
+		color: 'teal',
+		withBorder: true,
+		autoClose: 3500,
+		className: NotificationStyle.success,
+		classNames: notificationClassNames,
+		icon: <IoCheckmarkCircleOutline size={20} className={NotificationStyle.successGlyph} />,
+	})
+}
+
+function showErrorNotification(title: string, message: string) {
+	notifications.show({
+		title,
+		message,
+		color: 'red',
+		withBorder: true,
+		autoClose: 4500,
+		className: NotificationStyle.error,
+		classNames: notificationClassNames,
+		icon: <IoAlertCircleOutline size={20} className={NotificationStyle.errorGlyph} />,
+	})
+}
+
+function showWarningNotification(title: string, message: string) {
+	notifications.show({
+		title,
+		message,
+		color: 'yellow',
+		withBorder: true,
+		autoClose: 4000,
+		classNames: notificationClassNames,
+	})
 }
 
 // UTILITARIOS BASICOS:
@@ -1886,6 +1968,153 @@ function getInitialMealGroups() {
 	return DEFAULT_MEAL_GROUP_LABELS.map((label) => createMealGroup(label))
 }
 
+function normalizeMealGroupsFromApi(source: MealGroupState[] | null | undefined): MealGroupState[] {
+	if (!Array.isArray(source) || source.length === 0) {
+		return getInitialMealGroups()
+	}
+
+	const normalizedGroups = source.map((group) => {
+		const normalizedGroupName = typeof group.name === 'string' ? group.name : ''
+		const normalizedItems = Array.isArray(group.items)
+			? group.items.map((item) => ({
+				id: typeof item.id === 'string' && item.id.trim().length > 0 ? item.id : generateId(),
+				foodId: typeof item.foodId === 'string' && item.foodId.trim().length > 0 ? item.foodId : null,
+				food: typeof item.food === 'string' ? item.food : '',
+				quantity: typeof item.quantity === 'string' ? item.quantity : '',
+				measure: typeof item.measure === 'string' ? item.measure : '',
+				notes: typeof item.notes === 'string' ? item.notes : '',
+			}))
+			: []
+
+		return {
+			id: typeof group.id === 'string' && group.id.trim().length > 0 ? group.id : generateId(),
+			name: normalizedGroupName,
+			items: normalizedItems.length > 0 ? normalizedItems : [createMealItem()],
+		}
+	})
+
+	return normalizedGroups.length > 0 ? normalizedGroups : getInitialMealGroups()
+}
+
+function normalizeNutritionGuidanceFromApi(source: NutritionGuidanceState | null | undefined): NutritionGuidanceState {
+	if (!source || typeof source !== 'object') {
+		return NUTRITION_GUIDANCE_DEFAULT_STATE
+	}
+
+	return {
+		hydrationGoalMl: typeof source.hydrationGoalMl === 'number' && Number.isFinite(source.hydrationGoalMl)
+			? Math.min(Math.max(Math.round(source.hydrationGoalMl), 1200), 7000)
+			: null,
+		mealRoutineGuidance: typeof source.mealRoutineGuidance === 'string' ? source.mealRoutineGuidance : '',
+		foodQualityGuidance: typeof source.foodQualityGuidance === 'string' ? source.foodQualityGuidance : '',
+		preparationGuidance: typeof source.preparationGuidance === 'string' ? source.preparationGuidance : '',
+		behaviorGuidance: typeof source.behaviorGuidance === 'string' ? source.behaviorGuidance : '',
+		symptomMonitoringGuidance: typeof source.symptomMonitoringGuidance === 'string' ? source.symptomMonitoringGuidance : '',
+		restrictionsGuidance: typeof source.restrictionsGuidance === 'string' ? source.restrictionsGuidance : '',
+		additionalGuidance: typeof source.additionalGuidance === 'string' ? source.additionalGuidance : '',
+	}
+}
+
+function normalizeRecipeSuggestionsFromApi(source: RecipeSuggestionState[] | null | undefined): RecipeSuggestionState[] {
+	if (!Array.isArray(source) || source.length === 0) {
+		return [createRecipeSuggestion()]
+	}
+
+	const normalizedRecipes = source.map((recipe) => ({
+		id: typeof recipe.id === 'string' && recipe.id.trim().length > 0 ? recipe.id : generateId(),
+		recipeName: typeof recipe.recipeName === 'string' ? recipe.recipeName : '',
+		basedOnFoods: typeof recipe.basedOnFoods === 'string' ? recipe.basedOnFoods : '',
+		ingredients: typeof recipe.ingredients === 'string' ? recipe.ingredients : '',
+		preparationMethod: typeof recipe.preparationMethod === 'string' ? recipe.preparationMethod : '',
+		yieldInfo: typeof recipe.yieldInfo === 'string' ? recipe.yieldInfo : '',
+		portionQuantity: typeof recipe.portionQuantity === 'string' ? recipe.portionQuantity : '',
+	}))
+
+	return normalizedRecipes.length > 0 ? normalizedRecipes : [createRecipeSuggestion()]
+}
+
+function normalizeAiGuidanceHighlightsFromApi(source: string[] | null | undefined): string[] {
+	if (!Array.isArray(source)) {
+		return []
+	}
+
+	return source
+		.filter((highlight): highlight is string => typeof highlight === 'string')
+		.map((highlight) => highlight.trim())
+		.filter((highlight) => highlight.length > 0)
+}
+
+function normalizeAiGenerationSettingsFromApi(source: AiGenerationSettingsState | null | undefined): AiGenerationSettingsState {
+	if (!source || typeof source !== 'object') {
+		return AI_GENERATION_DEFAULT_SETTINGS
+	}
+
+	const resolvedPlanningFocus = AI_PLANNING_FOCUS_OPTIONS.some((option) => option.value === source.planningFocus)
+		? source.planningFocus
+		: AI_GENERATION_DEFAULT_SETTINGS.planningFocus
+	const resolvedClinicalStrictness = AI_CLINICAL_STRICTNESS_OPTIONS.some((option) => option.value === source.clinicalStrictness)
+		? source.clinicalStrictness
+		: AI_GENERATION_DEFAULT_SETTINGS.clinicalStrictness
+	const resolvedPreparationProfile = AI_PREPARATION_PROFILE_OPTIONS.some((option) => option.value === source.preparationProfile)
+		? source.preparationProfile
+		: AI_GENERATION_DEFAULT_SETTINGS.preparationProfile
+	const resolvedBudgetProfile = AI_BUDGET_PROFILE_OPTIONS.some((option) => option.value === source.budgetProfile)
+		? source.budgetProfile
+		: AI_GENERATION_DEFAULT_SETTINGS.budgetProfile
+
+	return {
+		modelOverride: typeof source.modelOverride === 'string' && source.modelOverride.trim().length > 0
+			? source.modelOverride
+			: null,
+		planningFocus: resolvedPlanningFocus,
+		clinicalStrictness: resolvedClinicalStrictness,
+		preparationProfile: resolvedPreparationProfile,
+		budgetProfile: resolvedBudgetProfile,
+		maxItemsPerGroup: typeof source.maxItemsPerGroup === 'number' && Number.isFinite(source.maxItemsPerGroup)
+			? Math.min(Math.max(Math.round(source.maxItemsPerGroup), 2), 6)
+			: AI_GENERATION_DEFAULT_SETTINGS.maxItemsPerGroup,
+		preferredFoods: typeof source.preferredFoods === 'string' ? source.preferredFoods : '',
+		restrictedFoods: typeof source.restrictedFoods === 'string' ? source.restrictedFoods : '',
+		extraInstructions: typeof source.extraInstructions === 'string' ? source.extraInstructions : '',
+	}
+}
+
+function normalizeAiRecipeGenerationSettingsFromApi(
+	source: AiRecipeGenerationSettingsState | null | undefined,
+): AiRecipeGenerationSettingsState {
+	if (!source || typeof source !== 'object') {
+		return AI_RECIPE_GENERATION_DEFAULT_SETTINGS
+	}
+
+	const resolvedRecipeFocus = AI_RECIPE_FOCUS_OPTIONS.some((option) => option.value === source.recipeFocus)
+		? source.recipeFocus
+		: AI_RECIPE_GENERATION_DEFAULT_SETTINGS.recipeFocus
+	const resolvedPreparationProfile = AI_PREPARATION_PROFILE_OPTIONS.some((option) => option.value === source.preparationProfile)
+		? source.preparationProfile
+		: AI_RECIPE_GENERATION_DEFAULT_SETTINGS.preparationProfile
+	const resolvedBudgetProfile = AI_BUDGET_PROFILE_OPTIONS.some((option) => option.value === source.budgetProfile)
+		? source.budgetProfile
+		: AI_RECIPE_GENERATION_DEFAULT_SETTINGS.budgetProfile
+
+	return {
+		modelOverride: typeof source.modelOverride === 'string' && source.modelOverride.trim().length > 0
+			? source.modelOverride
+			: null,
+		recipeFocus: resolvedRecipeFocus,
+		preparationProfile: resolvedPreparationProfile,
+		budgetProfile: resolvedBudgetProfile,
+		recipeCount: typeof source.recipeCount === 'number' && Number.isFinite(source.recipeCount)
+			? Math.min(Math.max(Math.round(source.recipeCount), 2), 8)
+			: AI_RECIPE_GENERATION_DEFAULT_SETTINGS.recipeCount,
+		maxIngredientsPerRecipe: typeof source.maxIngredientsPerRecipe === 'number' && Number.isFinite(source.maxIngredientsPerRecipe)
+			? Math.min(Math.max(Math.round(source.maxIngredientsPerRecipe), 3), 12)
+			: AI_RECIPE_GENERATION_DEFAULT_SETTINGS.maxIngredientsPerRecipe,
+		preferredFoods: typeof source.preferredFoods === 'string' ? source.preferredFoods : '',
+		restrictedFoods: typeof source.restrictedFoods === 'string' ? source.restrictedFoods : '',
+		extraInstructions: typeof source.extraInstructions === 'string' ? source.extraInstructions : '',
+	}
+}
+
 function reorderMealGroups(
 	groups: MealGroupState[],
 	sourceGroupId: string,
@@ -1941,6 +2170,18 @@ function formatDate(dateValue: string) {
 	}
 
 	return parsedDate.toLocaleDateString('pt-BR')
+}
+
+function formatDateTime(dateValue: string) {
+	const parsedDate = new Date(dateValue)
+	if (Number.isNaN(parsedDate.getTime())) {
+		return '-'
+	}
+
+	return `${parsedDate.toLocaleDateString('pt-BR')} ${parsedDate.toLocaleTimeString('pt-BR', {
+		hour: '2-digit',
+		minute: '2-digit',
+	})}`
 }
 
 function formatGender(gender: string) {
@@ -2324,6 +2565,7 @@ function SummaryMetricCard({ label, value }: SummaryMetricCardProps) {
 export function MenuBuilderPage() {
 	const { patientId } = useParams<{ patientId: string }>()
 	const navigate = useNavigate()
+	const location = useLocation()
 	const { user, token, logout } = useAuth()
 
 	// ESTADO LOCAL DA TELA:
@@ -2331,6 +2573,9 @@ export function MenuBuilderPage() {
 	const [patient, setPatient] = useState<PatientMenuDataResponse | null>(null)
 	const [isLoading, setIsLoading] = useState(true)
 	const [errorMessage, setErrorMessage] = useState<string | null>(null)
+	const [isLoadingSavedMenu, setIsLoadingSavedMenu] = useState(false)
+	const [isSavingMenuDraft, setIsSavingMenuDraft] = useState(false)
+	const [savedMenuUpdatedAt, setSavedMenuUpdatedAt] = useState<string | null>(null)
 	const [activeDataEntryStep, setActiveDataEntryStep] = useState(0)
 	const [customMealGroupLabel, setCustomMealGroupLabel] = useState('')
 	const [mealGroups, setMealGroups] = useState<MealGroupState[]>(() => getInitialMealGroups())
@@ -2372,6 +2617,11 @@ export function MenuBuilderPage() {
 	} | null>(null)
 	const [currentNutritionist, setCurrentNutritionist] = useState<CurrentNutritionistProfileResponse | null>(null)
 	const [nutritionistProfileImageForPdf, setNutritionistProfileImageForPdf] = useState<string | null>(null)
+	const [pdfDownloadUrl, setPdfDownloadUrl] = useState<string | null>(null)
+	const [pdfDownloadFileName, setPdfDownloadFileName] = useState('plano-alimentar.pdf')
+	const [isGeneratingPdfBlob, setIsGeneratingPdfBlob] = useState(false)
+	const [pdfGenerationErrorMessage, setPdfGenerationErrorMessage] = useState<string | null>(null)
+	const [hasAppliedLocationPrefill, setHasAppliedLocationPrefill] = useState(false)
 
 	// MEMOIZACAO DE LOOKUPS/ENTRADAS DERIVADAS:
 	// Evita recalculos desnecessarios a cada render.
@@ -2397,10 +2647,39 @@ export function MenuBuilderPage() {
 		return parsedId
 	}, [patientId])
 
+	const locationPrefillMenuDraft = useMemo(() => {
+		const navigationState = location.state as MenuBuilderLocationState | null
+		const prefillDraft = navigationState?.prefillMenuDraft
+
+		if (!prefillDraft || typeof prefillDraft !== 'object') {
+			return null
+		}
+
+		return prefillDraft
+	}, [location.state])
+	const locationPrefillSource = useMemo(() => {
+		const navigationState = location.state as MenuBuilderLocationState | null
+		return navigationState?.prefillSource ?? null
+	}, [location.state])
+
 	const aiModelOptions = useMemo(
 		() => aiAvailableModels.map((modelName) => ({ value: modelName, label: modelName })),
 		[aiAvailableModels],
 	)
+
+	// Quando troca o paciente da rota, reseta o rascunho local antes de carregar os dados remotos.
+	useEffect(() => {
+		setActiveDataEntryStep(0)
+		setCustomMealGroupLabel('')
+		setMealGroups(getInitialMealGroups())
+		setNutritionGuidance(NUTRITION_GUIDANCE_DEFAULT_STATE)
+		setAiGuidanceHighlights([])
+		setRecipeSuggestions([createRecipeSuggestion()])
+		setAiGenerationSettings(AI_GENERATION_DEFAULT_SETTINGS)
+		setAiRecipeGenerationSettings(AI_RECIPE_GENERATION_DEFAULT_SETTINGS)
+		setSavedMenuUpdatedAt(null)
+		setHasAppliedLocationPrefill(false)
+	}, [parsedPatientId])
 
 	// EFEITO 1:
 	// Carrega dados do paciente ao entrar na pagina ou quando o id/token mudam.
@@ -2472,6 +2751,115 @@ export function MenuBuilderPage() {
 			controller.abort()
 		}
 	}, [logout, parsedPatientId, token])
+
+	useEffect(() => {
+		if (!token || parsedPatientId === null || patient?.id !== parsedPatientId) {
+			return
+		}
+
+		const controller = new AbortController()
+
+		const loadSavedMenuDraft = async () => {
+			try {
+				setIsLoadingSavedMenu(true)
+				const applyDraftToState = (
+					data: PatientMenuDraftApiResponse,
+					shouldStartFromFirstStep = false,
+				) => {
+					const resolvedStep = shouldStartFromFirstStep
+						? 0
+						: Math.min(Math.max(data.activeDataEntryStep, 0), DATA_ENTRY_STEPS_TOTAL - 1)
+					setActiveDataEntryStep(resolvedStep)
+					setMealGroups(normalizeMealGroupsFromApi(data.mealGroups))
+					setNutritionGuidance(normalizeNutritionGuidanceFromApi(data.nutritionGuidance))
+					setAiGuidanceHighlights(normalizeAiGuidanceHighlightsFromApi(data.aiGuidanceHighlights))
+					setRecipeSuggestions(normalizeRecipeSuggestionsFromApi(data.recipeSuggestions))
+					setAiGenerationSettings(normalizeAiGenerationSettingsFromApi(data.aiGenerationSettings))
+					setAiRecipeGenerationSettings(normalizeAiRecipeGenerationSettingsFromApi(data.aiRecipeGenerationSettings))
+					setSavedMenuUpdatedAt(typeof data.updatedAt === 'string' ? data.updatedAt : null)
+				}
+
+				if (locationPrefillSource === 'new-empty') {
+					if (!controller.signal.aborted) {
+						setSavedMenuUpdatedAt(null)
+						setHasAppliedLocationPrefill(true)
+					}
+					return
+				}
+
+				if (
+					locationPrefillMenuDraft &&
+					!hasAppliedLocationPrefill &&
+					locationPrefillMenuDraft.patientId === parsedPatientId
+				) {
+					if (!controller.signal.aborted) {
+						const shouldStartFromFirstStep = locationPrefillSource === 'saved-history'
+						applyDraftToState(locationPrefillMenuDraft, shouldStartFromFirstStep)
+						setHasAppliedLocationPrefill(true)
+					}
+					return
+				}
+
+				const response = await fetch(buildApiUrl(`/api/patients/${parsedPatientId}/menu`), {
+					method: 'GET',
+					headers: {
+						Authorization: `Bearer ${token}`,
+						Accept: 'application/json',
+					},
+					signal: controller.signal,
+				})
+
+				if (response.status === 401) {
+					logout()
+					return
+				}
+
+				if (response.status === 404) {
+					if (!controller.signal.aborted) {
+						setSavedMenuUpdatedAt(null)
+					}
+					return
+				}
+
+				if (!response.ok) {
+					const message = await extractErrorMessage(response, LOAD_SAVED_MENU_ERROR_MESSAGE)
+					throw new Error(message)
+				}
+
+				const data = (await response.json()) as PatientMenuDraftApiResponse
+				if (controller.signal.aborted) {
+					return
+				}
+
+				applyDraftToState(data)
+			} catch (error) {
+				if (controller.signal.aborted) {
+					return
+				}
+
+				const message = error instanceof Error ? error.message : LOAD_SAVED_MENU_ERROR_MESSAGE
+				showErrorNotification('Erro ao carregar cardapio salvo', message)
+			} finally {
+				if (!controller.signal.aborted) {
+					setIsLoadingSavedMenu(false)
+				}
+			}
+		}
+
+		void loadSavedMenuDraft()
+
+		return () => {
+			controller.abort()
+		}
+	}, [
+		hasAppliedLocationPrefill,
+		locationPrefillMenuDraft,
+		locationPrefillSource,
+		logout,
+		parsedPatientId,
+		patient?.id,
+		token,
+	])
 
 	useEffect(() => {
 		if (!token) {
@@ -2848,6 +3236,12 @@ export function MenuBuilderPage() {
 		|| aiGenerationSettings.modelOverride?.trim()
 		|| backendDefaultAiModel
 		|| 'Padrao do backend'
+	const handlePdfBlobStateChange = useCallback((nextBlobState: MealPlanPdfBlobState) => {
+		setPdfDownloadUrl(nextBlobState.url)
+		setPdfDownloadFileName(nextBlobState.downloadFileName)
+		setIsGeneratingPdfBlob(nextBlobState.isGeneratingBlob)
+		setPdfGenerationErrorMessage(nextBlobState.generationErrorMessage)
+	}, [])
 
 	// CONFIGURACOES DE APRESENTACAO DA PAGINA E DO MODAL.
 	const pageTitle = patient ? `Cardapio: ${patient.name}` : 'Cardapio do paciente'
@@ -2882,11 +3276,7 @@ export function MenuBuilderPage() {
 
 	const openAiSettingsModal = () => {
 		if (!patient) {
-			notifications.show({
-				title: 'Geracao com IA',
-				message: 'Dados do paciente indisponiveis para gerar cardapio.',
-				color: 'red',
-			})
+			showErrorNotification('Geracao com IA', 'Dados do paciente indisponiveis para gerar cardapio.')
 			return
 		}
 
@@ -2895,20 +3285,12 @@ export function MenuBuilderPage() {
 
 	const openAiRecipeSettingsModal = () => {
 		if (!patient) {
-			notifications.show({
-				title: 'Receitas sugeridas',
-				message: 'Dados do paciente indisponiveis para gerar receitas.',
-				color: 'red',
-			})
+			showErrorNotification('Receitas sugeridas', 'Dados do paciente indisponiveis para gerar receitas.')
 			return
 		}
 
 		if (selectedFoodsForRecipes.length === 0) {
-			notifications.show({
-				title: 'Receitas sugeridas',
-				message: 'Selecione alimentos no plano alimentar antes de gerar receitas.',
-				color: 'yellow',
-			})
+			showWarningNotification('Receitas sugeridas', 'Selecione alimentos no plano alimentar antes de gerar receitas.')
 			return
 		}
 
@@ -2917,6 +3299,69 @@ export function MenuBuilderPage() {
 
 	const handleDataEntryStepChange = (nextStep: number) => {
 		setActiveDataEntryStep(Math.min(Math.max(nextStep, 0), DATA_ENTRY_STEPS_TOTAL - 1))
+	}
+
+	const handleSaveMenuDraftClick = async () => {
+		if (!token) {
+			logout()
+			return
+		}
+
+		if (parsedPatientId === null || !patient) {
+			showErrorNotification('Salvar cardapio', 'Paciente invalido para salvar o cardapio.')
+			return
+		}
+
+		const payload: SavePatientMenuDraftRequest = {
+			activeDataEntryStep,
+			mealGroups,
+			nutritionGuidance,
+			aiGuidanceHighlights,
+			recipeSuggestions,
+			aiGenerationSettings,
+			aiRecipeGenerationSettings,
+		}
+
+		try {
+			setIsSavingMenuDraft(true)
+
+			const response = await fetch(buildApiUrl(`/api/patients/${parsedPatientId}/menu`), {
+				method: 'PUT',
+				headers: {
+					Authorization: `Bearer ${token}`,
+					Accept: 'application/json',
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(payload),
+			})
+
+			if (response.status === 401) {
+				logout()
+				return
+			}
+
+			if (!response.ok) {
+				const message = await extractErrorMessage(response, SAVE_MENU_ERROR_MESSAGE)
+				throw new Error(message)
+			}
+
+			const data = (await response.json()) as PatientMenuDraftApiResponse
+			setActiveDataEntryStep(Math.min(Math.max(data.activeDataEntryStep, 0), DATA_ENTRY_STEPS_TOTAL - 1))
+			setMealGroups(normalizeMealGroupsFromApi(data.mealGroups))
+			setNutritionGuidance(normalizeNutritionGuidanceFromApi(data.nutritionGuidance))
+			setAiGuidanceHighlights(normalizeAiGuidanceHighlightsFromApi(data.aiGuidanceHighlights))
+			setRecipeSuggestions(normalizeRecipeSuggestionsFromApi(data.recipeSuggestions))
+			setAiGenerationSettings(normalizeAiGenerationSettingsFromApi(data.aiGenerationSettings))
+			setAiRecipeGenerationSettings(normalizeAiRecipeGenerationSettingsFromApi(data.aiRecipeGenerationSettings))
+			setSavedMenuUpdatedAt(typeof data.updatedAt === 'string' ? data.updatedAt : new Date().toISOString())
+
+			showSuccessNotification('Cardapio salvo', 'Rascunho completo salvo com sucesso.')
+		} catch (error) {
+			const message = error instanceof Error ? error.message : SAVE_MENU_ERROR_MESSAGE
+			showErrorNotification('Erro ao salvar cardapio', message)
+		} finally {
+			setIsSavingMenuDraft(false)
+		}
 	}
 
 	const handleNutritionGuidanceTextFieldChange = (
@@ -2952,11 +3397,7 @@ export function MenuBuilderPage() {
 		}
 
 		if (!patient) {
-			notifications.show({
-				title: 'Orientacoes nutricionais',
-				message: 'Dados do paciente indisponiveis para gerar orientacoes.',
-				color: 'red',
-			})
+			showErrorNotification('Orientacoes nutricionais', 'Dados do paciente indisponiveis para gerar orientacoes.')
 			return
 		}
 
@@ -3013,18 +3454,13 @@ export function MenuBuilderPage() {
 				setAiGuidanceHighlights(parsedGuidance.highlights)
 			}
 
-			notifications.show({
-				title: 'Orientacoes geradas',
-				message: `Orientacoes detalhadas atualizadas (${parsedGuidance.highlights.length} destaque(s) principais).`,
-				color: 'teal',
-			})
+			showSuccessNotification(
+				'Orientacoes geradas',
+				`Orientacoes detalhadas atualizadas (${parsedGuidance.highlights.length} destaque(s) principais).`,
+			)
 		} catch (error) {
 			const message = error instanceof Error ? error.message : GENERATE_GUIDANCE_ERROR_MESSAGE
-			notifications.show({
-				title: 'Erro ao gerar orientacoes',
-				message,
-				color: 'red',
-			})
+			showErrorNotification('Erro ao gerar orientacoes', message)
 		} finally {
 			setIsGeneratingAiGuidance(false)
 			setAiGuidanceGenerationStep(1)
@@ -3072,20 +3508,12 @@ export function MenuBuilderPage() {
 		}
 
 		if (!patient) {
-			notifications.show({
-				title: 'Receitas sugeridas',
-				message: 'Dados do paciente indisponiveis para gerar receitas.',
-				color: 'red',
-			})
+			showErrorNotification('Receitas sugeridas', 'Dados do paciente indisponiveis para gerar receitas.')
 			return
 		}
 
 		if (selectedFoodsForRecipes.length === 0) {
-			notifications.show({
-				title: 'Receitas sugeridas',
-				message: 'Selecione alimentos no plano alimentar antes de gerar receitas.',
-				color: 'yellow',
-			})
+			showWarningNotification('Receitas sugeridas', 'Selecione alimentos no plano alimentar antes de gerar receitas.')
 			return
 		}
 
@@ -3144,20 +3572,15 @@ export function MenuBuilderPage() {
 			setAiRecipeGenerationStatusMessage('Aplicando receitas sugeridas...')
 			setRecipeSuggestions(recipesToApply)
 
-			notifications.show({
-				title: 'Receitas geradas',
-				message: recipesToApply.length < resolvedRecipeSettings.recipeCount
+			showSuccessNotification(
+				'Receitas geradas',
+				recipesToApply.length < resolvedRecipeSettings.recipeCount
 					? `Foram aplicadas ${recipesToApply.length} receita(s). O alvo configurado era ${resolvedRecipeSettings.recipeCount}.`
 					: `${recipesToApply.length} receita(s) sugerida(s) com base nos alimentos selecionados.`,
-				color: 'teal',
-			})
+			)
 		} catch (error) {
 			const message = error instanceof Error ? error.message : GENERATE_RECIPE_SUGGESTIONS_ERROR_MESSAGE
-			notifications.show({
-				title: 'Erro ao gerar receitas',
-				message,
-				color: 'red',
-			})
+			showErrorNotification('Erro ao gerar receitas', message)
 		} finally {
 			setIsGeneratingAiRecipes(false)
 			setAiRecipeGenerationStep(1)
@@ -3353,11 +3776,7 @@ export function MenuBuilderPage() {
 		}
 
 		if (!patient) {
-			notifications.show({
-				title: 'Geracao com IA',
-				message: 'Dados do paciente indisponiveis para gerar cardapio.',
-				color: 'red',
-			})
+			showErrorNotification('Geracao com IA', 'Dados do paciente indisponiveis para gerar cardapio.')
 			return
 		}
 
@@ -3412,20 +3831,17 @@ export function MenuBuilderPage() {
 			setAiGenerationStatusMessage('Aplicando sugestoes e finalizando...')
 			setMealGroups(mappedMealGroups)
 
-			notifications.show({
-				title: 'Cardapio gerado com IA',
-				message: unmatchedFoods.length > 0
-					? `${unmatchedFoods.length} alimento(s) nao foi(ram) mapeado(s) automaticamente na TACO. Revise os itens com observacao.`
-					: 'Cardapio aplicado com sucesso.',
-				color: unmatchedFoods.length > 0 ? 'yellow' : 'teal',
-			})
+			if (unmatchedFoods.length > 0) {
+				showWarningNotification(
+					'Cardapio gerado com IA',
+					`${unmatchedFoods.length} alimento(s) nao foi(ram) mapeado(s) automaticamente na TACO. Revise os itens com observacao.`,
+				)
+			} else {
+				showSuccessNotification('Cardapio gerado com IA', 'Cardapio aplicado com sucesso.')
+			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : GENERATE_MENU_ERROR_MESSAGE
-			notifications.show({
-				title: 'Erro na geracao com IA',
-				message,
-				color: 'red',
-			})
+			showErrorNotification('Erro na geracao com IA', message)
 		} finally {
 			setIsGeneratingAiMenu(false)
 			setAiGenerationStep(1)
@@ -3679,7 +4095,7 @@ export function MenuBuilderPage() {
 
 												<Box className="rounded-2xl border border-[#d2e4eb] bg-white p-4">
 													<Grid gutter="sm" align="flex-end">
-														<Grid.Col span={{ base: 12, xl: 6 }}>
+														<Grid.Col span={{ base: 12, xl: 4 }}>
 															<TextInput
 																label="Novo grupo de refeicao"
 																placeholder="Ex.: Ceia ou Pre treino"
@@ -3689,7 +4105,7 @@ export function MenuBuilderPage() {
 																classNames={textInputClassNames}
 															/>
 														</Grid.Col>
-														<Grid.Col span={{ base: 12, sm: 6, xl: 3 }}>
+														<Grid.Col span={{ base: 12, sm: 4, xl: 2 }}>
 															<Button
 																type="button"
 																fullWidth
@@ -3701,20 +4117,27 @@ export function MenuBuilderPage() {
 																Adicionar grupo
 															</Button>
 														</Grid.Col>
-															<Grid.Col span={{ base: 12, sm: 6, xl: 3 }}>
-																<Button
-																	type="button"
-																	fullWidth
-																	radius="md"
-																	classNames={primaryButtonClassNames}
-																	leftSection={<MdAutoAwesome size={18} />}
-																	onClick={openAiSettingsModal}
-																	loading={isGeneratingAiMenu}
-																>
-																	{isGeneratingAiMenu ? 'Gerando com IA' : 'Gerar com IA'}
-																</Button>
-															</Grid.Col>
+														<Grid.Col span={{ base: 12, sm: 4, xl: 3 }} className="xl:ml-auto">
+															<Button
+																type="button"
+																fullWidth
+																radius="md"
+																classNames={primaryButtonClassNames}
+																leftSection={<MdAutoAwesome size={18} />}
+																onClick={openAiSettingsModal}
+																loading={isGeneratingAiMenu}
+															>
+																{isGeneratingAiMenu ? 'Gerando com IA' : 'Gerar com IA'}
+															</Button>
+														</Grid.Col>
 													</Grid>
+													<Text className="mt-2 text-xs font-medium text-slate-500">
+														{isLoadingSavedMenu
+															? 'Carregando rascunho salvo do paciente...'
+															: savedMenuUpdatedAt
+																? `Ultimo rascunho salvo em ${formatDateTime(savedMenuUpdatedAt)}.`
+																: 'Nenhum rascunho salvo ainda para este paciente.'}
+													</Text>
 												</Box>
 
 													{mealGroups.length === 0 ? (
@@ -4285,7 +4708,7 @@ export function MenuBuilderPage() {
 													{/* Cabecalho da area de preview PDF. */}
 													{/* Resumo clinico expandivel do paciente para apoiar decisao do nutricionista. */}
 													{/* Resumo clinico expandivel do paciente para apoiar decisao do nutricionista. */}
-													<Box className="rounded-2xl border border-[#d2e4eb] bg-white p-4">
+													<Box className="rounded-2xl border border-[#d2e4eb] bg-[linear-gradient(125deg,rgba(39,144,176,0.12)_0%,rgba(148,186,101,0.13)_52%,rgba(255,255,255,0.98)_100%)] p-4">
 													<Text className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">
 														Canvas do PDF
 													</Text>
@@ -4302,16 +4725,61 @@ export function MenuBuilderPage() {
 															nutritionPreview={planNutritionPreview}
 															recipeSuggestions={debouncedRecipeSuggestions}
 															nutritionistProfile={nutritionistProfileForPdf}
+															showDownloadButton={false}
+															onPdfBlobStateChange={handlePdfBlobStateChange}
 														/>
 													</Box>
 
 													<Box className="rounded-2xl border border-[#d2e4eb] bg-white p-4">
 														<Text className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-slate-500">
-															Adequacao no PDF
+															Funções de exportação e salvamento
 														</Text>
 														<Text className="mt-2 text-sm text-slate-600">
-															As tabelas de porcoes e adequacao nutricional agora fazem parte do proprio PDF do plano alimentar.
+															Após gerar o cardápio, use os botões abaixo para baixar o PDF ou salvar um rascunho do plano no paciente.
 														</Text>
+														<Group className="mt-3" gap="sm" grow>
+															{pdfDownloadUrl ? (
+																<Button
+																	type="button"
+																	component="a"
+																	href={pdfDownloadUrl}
+																	download={pdfDownloadFileName}
+																	radius="md"
+																	classNames={neutralButtonClassNames}
+																	leftSection={<MdDownload size={18} />}
+																	loading={isGeneratingPdfBlob}
+																>
+																	Baixar PDF local
+																</Button>
+															) : (
+																<Button
+																	type="button"
+																	radius="md"
+																	classNames={neutralButtonClassNames}
+																	leftSection={<MdDownload size={18} />}
+																	disabled
+																	loading={isGeneratingPdfBlob}
+																>
+																	Baixar PDF local
+																</Button>
+															)}
+															<Button
+																type="button"
+																radius="md"
+																classNames={neutralButtonClassNames}
+																leftSection={<MdSave size={18} />}
+																onClick={handleSaveMenuDraftClick}
+																loading={isSavingMenuDraft}
+																disabled={isLoadingSavedMenu}
+															>
+																{isSavingMenuDraft ? 'Salvando...' : 'Salvar cardapio'}
+															</Button>
+														</Group>
+														{pdfGenerationErrorMessage ? (
+															<Text className="mt-2 text-xs font-medium text-red-600">
+																Erro na geracao do PDF: {pdfGenerationErrorMessage}
+															</Text>
+														) : null}
 													</Box>
 											</Stack>
 										</Box>

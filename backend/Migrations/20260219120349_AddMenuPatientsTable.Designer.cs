@@ -3,6 +3,7 @@ using System;
 using Backend.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace backend.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260219120349_AddMenuPatientsTable")]
+    partial class AddMenuPatientsTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -73,9 +76,8 @@ namespace backend.Migrations
 
                     b.HasIndex("PatientId");
 
-                    b.HasIndex("UserId", "PatientId");
-
-                    b.HasIndex("UserId", "PatientId", "UpdatedAt");
+                    b.HasIndex("UserId", "PatientId")
+                        .IsUnique();
 
                     b.ToTable("menu_patients", (string)null);
                 });
