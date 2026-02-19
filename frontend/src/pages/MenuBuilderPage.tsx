@@ -11,7 +11,7 @@ import ButtonStyle from '../components/mantine/buttons/PrimaryButton.module.css'
 import { SideBar } from '../components/custom/sidebar/SideBar'
 import { PageInfo } from '../components/custom/pageInfo/PageInfo'
 import { PageContentContainer } from '../components/custom/pageContentContainer/PageContentContainer'
-import { MealPlanPdfCanvasPreview } from '../components/custom/pdf/MealPlanPdfCanvasPreview'
+import { MealPlanPdfCanvasPreview, type MealPlanPdfNutritionistProfile } from '../components/custom/pdf/MealPlanPdfCanvasPreview'
 
 import { useAuth } from '../auth/AuthContext'
 import { APP_SIDEBAR_ITEMS } from '../lib/sidebarItems'
@@ -52,6 +52,19 @@ type PatientMenuDataResponse = {
 	bmr: number
 	tdee: number
 	createdAt: string
+}
+
+type CurrentNutritionistProfileResponse = {
+	id: number
+	name: string
+	email: string
+	createdAt: string
+	phone: string | null
+	crn: string | null
+	institution: string | null
+	profilePicture: string | null
+	city: string | null
+	state: string | null
 }
 
 type MealItemState = {
@@ -402,6 +415,49 @@ function buildApiUrl(path: string) {
 	}
 
 	return `${API_BASE_URL}${path}`
+}
+
+function normalizeProfileImageSrc(profilePicture: string | null | undefined): string | null {
+	if (!profilePicture) {
+		return null
+	}
+
+	const normalized = profilePicture.trim()
+	if (!normalized) {
+		return null
+	}
+
+	if (
+		normalized.startsWith('data:image/') ||
+		normalized.startsWith('http://') ||
+		normalized.startsWith('https://')
+	) {
+		return normalized
+	}
+
+	if (normalized.startsWith('/')) {
+		return buildApiUrl(normalized)
+	}
+
+	return normalized
+}
+
+function convertBlobToDataUrl(blob: Blob): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const reader = new FileReader()
+		reader.onload = () => {
+			if (typeof reader.result === 'string') {
+				resolve(reader.result)
+				return
+			}
+
+			reject(new Error('Falha ao converter imagem para data URL.'))
+		}
+		reader.onerror = () => {
+			reject(new Error('Falha ao carregar imagem para o PDF.'))
+		}
+		reader.readAsDataURL(blob)
+	})
 }
 
 function generateId() {
@@ -2268,7 +2324,7 @@ function SummaryMetricCard({ label, value }: SummaryMetricCardProps) {
 export function MenuBuilderPage() {
 	const { patientId } = useParams<{ patientId: string }>()
 	const navigate = useNavigate()
-	const { token, logout } = useAuth()
+	const { user, token, logout } = useAuth()
 
 	// ESTADO LOCAL DA TELA:
 	// Controla dados carregados, formulario do cardapio, modal e progresso da geracao com IA.
@@ -2314,6 +2370,8 @@ export function MenuBuilderPage() {
 		groupId: string
 		placement: MealGroupDropPlacement
 	} | null>(null)
+	const [currentNutritionist, setCurrentNutritionist] = useState<CurrentNutritionistProfileResponse | null>(null)
+	const [nutritionistProfileImageForPdf, setNutritionistProfileImageForPdf] = useState<string | null>(null)
 
 	// MEMOIZACAO DE LOOKUPS/ENTRADAS DERIVADAS:
 	// Evita recalculos desnecessarios a cada render.
@@ -2414,6 +2472,105 @@ export function MenuBuilderPage() {
 			controller.abort()
 		}
 	}, [logout, parsedPatientId, token])
+
+	useEffect(() => {
+		if (!token) {
+			setCurrentNutritionist(null)
+			return
+		}
+
+		const controller = new AbortController()
+
+		const loadCurrentNutritionist = async () => {
+			try {
+				const response = await fetch(buildApiUrl('/api/users/me'), {
+					method: 'GET',
+					headers: {
+						Authorization: `Bearer ${token}`,
+						Accept: 'application/json',
+					},
+					signal: controller.signal,
+				})
+
+				if (response.status === 401) {
+					logout()
+					return
+				}
+
+				if (!response.ok) {
+					if (!controller.signal.aborted) {
+						setCurrentNutritionist(null)
+					}
+					return
+				}
+
+				const data = (await response.json()) as CurrentNutritionistProfileResponse
+				if (!controller.signal.aborted) {
+					setCurrentNutritionist(data)
+				}
+			} catch {
+				if (!controller.signal.aborted) {
+					setCurrentNutritionist(null)
+				}
+			}
+		}
+
+		void loadCurrentNutritionist()
+
+		return () => {
+			controller.abort()
+		}
+	}, [logout, token])
+
+	useEffect(() => {
+		const normalizedProfileImage = normalizeProfileImageSrc(currentNutritionist?.profilePicture)
+		if (!normalizedProfileImage) {
+			setNutritionistProfileImageForPdf(null)
+			return
+		}
+
+		if (normalizedProfileImage.startsWith('data:image/')) {
+			setNutritionistProfileImageForPdf(normalizedProfileImage)
+			return
+		}
+
+		const controller = new AbortController()
+
+		const resolveProfileImage = async () => {
+			try {
+				const response = await fetch(normalizedProfileImage, {
+					method: 'GET',
+					headers: token
+						? {
+							Authorization: `Bearer ${token}`,
+						}
+						: undefined,
+					signal: controller.signal,
+				})
+
+				if (!response.ok) {
+					throw new Error('Nao foi possivel carregar a foto do nutricionista.')
+				}
+
+				const imageBlob = await response.blob()
+				const imageDataUrl = await convertBlobToDataUrl(imageBlob)
+				if (!controller.signal.aborted) {
+					setNutritionistProfileImageForPdf(imageDataUrl)
+				}
+			} catch {
+				if (!controller.signal.aborted) {
+					// Mantem URL original como fallback caso a conversao para data URL falhe.
+					setNutritionistProfileImageForPdf(normalizedProfileImage)
+				}
+			}
+		}
+
+		void resolveProfileImage()
+
+		return () => {
+			controller.abort()
+		}
+	}, [currentNutritionist?.profilePicture, token])
 
 	// EFEITO 2:
 	// Carrega a tabela TACO (JSON local) para popular o select de alimentos.
@@ -2641,6 +2798,50 @@ export function MenuBuilderPage() {
 		() => buildPlanNutritionPreviewData(mealGroups, tacoFoodById, patient?.gender ?? ''),
 		[mealGroups, patient?.gender, tacoFoodById],
 	)
+	const nutritionistProfileForPdf = useMemo<MealPlanPdfNutritionistProfile | null>(() => {
+		const normalizedName = normalizeTextField(currentNutritionist?.name ?? user?.name ?? '')
+		const normalizedEmail = normalizeTextField(currentNutritionist?.email ?? user?.email ?? '')
+		const normalizedPhone = normalizeTextField(currentNutritionist?.phone ?? '')
+		const normalizedCrn = normalizeTextField(currentNutritionist?.crn ?? '')
+		const normalizedInstitution = normalizeTextField(currentNutritionist?.institution ?? '')
+		const normalizedCity = normalizeTextField(currentNutritionist?.city ?? '')
+		const normalizedState = normalizeTextField(currentNutritionist?.state ?? '')
+
+		if (
+			!normalizedName &&
+			!normalizedEmail &&
+			!normalizedPhone &&
+			!normalizedCrn &&
+			!normalizedInstitution &&
+			!normalizedCity &&
+			!normalizedState &&
+			!nutritionistProfileImageForPdf
+		) {
+			return null
+		}
+
+		return {
+			name: normalizedName || 'Nutricionista responsavel',
+			email: normalizedEmail || null,
+			phone: normalizedPhone || null,
+			crn: normalizedCrn || null,
+			institution: normalizedInstitution || null,
+			city: normalizedCity || null,
+			state: normalizedState || null,
+			profileImage: nutritionistProfileImageForPdf,
+		}
+	}, [
+		currentNutritionist?.city,
+		currentNutritionist?.crn,
+		currentNutritionist?.email,
+		currentNutritionist?.institution,
+		currentNutritionist?.name,
+		currentNutritionist?.phone,
+		currentNutritionist?.state,
+		nutritionistProfileImageForPdf,
+		user?.email,
+		user?.name,
+	])
 	const effectiveAiMenuModelLabel = aiGenerationSettings.modelOverride?.trim() || backendDefaultAiModel || 'Padrao do backend'
 	const effectiveAiGuidanceModelLabel = aiGenerationSettings.modelOverride?.trim() || backendDefaultAiModel || 'Padrao do backend'
 	const effectiveAiRecipeModelLabel = aiRecipeGenerationSettings.modelOverride?.trim()
@@ -4100,6 +4301,7 @@ export function MenuBuilderPage() {
 															orientationTips={nutritionGuidanceTipsForPdf}
 															nutritionPreview={planNutritionPreview}
 															recipeSuggestions={debouncedRecipeSuggestions}
+															nutritionistProfile={nutritionistProfileForPdf}
 														/>
 													</Box>
 

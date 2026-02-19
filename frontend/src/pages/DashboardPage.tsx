@@ -694,7 +694,7 @@ export function DashboardPage() {
 										{isEditing && (
 
 											<Stack align="center" className="w-full">
-												<Skeleton visible={isProfileImageSkeletonVisible} radius="md" className="mb-4">
+												<Skeleton visible={isProfileImageSkeletonVisible} radius="md" className="flex items-center justify-center">
 													<Image
 														src={resolvedProfileImageSrc}
 														alt="Foto de perfil do nutricionista"
