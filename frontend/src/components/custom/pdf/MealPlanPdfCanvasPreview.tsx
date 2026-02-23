@@ -18,6 +18,7 @@ type MealPlanPdfMealItem = {
 export type MealPlanPdfMealGroup = {
 	id: string
 	name: string
+	scheduleTime?: string | null
 	items: MealPlanPdfMealItem[]
 }
 
@@ -1563,6 +1564,8 @@ function normalizeMealGroupName(groupName: string) {
 		.toLowerCase()
 }
 
+const MEAL_SCHEDULE_TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/
+
 function resolveMealSchedule(groupName: string, groupIndex: number) {
 	const normalizedGroupName = normalizeMealGroupName(groupName)
 
@@ -1594,6 +1597,15 @@ function resolveMealSchedule(groupName: string, groupIndex: number) {
 	return `${String(fallbackHour).padStart(2, '0')}:00`
 }
 
+function normalizeMealScheduleTime(value: unknown) {
+	if (typeof value !== 'string') {
+		return ''
+	}
+
+	const normalizedValue = value.trim()
+	return MEAL_SCHEDULE_TIME_PATTERN.test(normalizedValue) ? normalizedValue : ''
+}
+
 function slugifyToFileName(value: string) {
 	const normalizedValue = value
 		.normalize('NFD')
@@ -1608,6 +1620,7 @@ function slugifyToFileName(value: string) {
 function sanitizeMealGroups(mealGroups: MealPlanPdfMealGroup[]) {
 	const normalizedGroups = mealGroups.map((group) => {
 		const normalizedGroupName = normalizeTextField(group.name)
+		const normalizedScheduleTime = normalizeMealScheduleTime(group.scheduleTime)
 
 		const normalizedItems = group.items
 			.map((item) => ({
@@ -1627,6 +1640,7 @@ function sanitizeMealGroups(mealGroups: MealPlanPdfMealGroup[]) {
 		return {
 			...group,
 			name: normalizedGroupName.length > 0 ? normalizedGroupName : 'Refeicao',
+			scheduleTime: normalizedScheduleTime,
 			items: normalizedItems,
 		}
 	})
@@ -1638,6 +1652,7 @@ function sanitizeMealGroups(mealGroups: MealPlanPdfMealGroup[]) {
 	return [{
 		id: 'fallback-group',
 		name: 'Refeicao 1',
+		scheduleTime: '07:00',
 		items: [{
 			id: 'fallback-item',
 			foodId: null,
@@ -1673,7 +1688,7 @@ function sanitizeRecipeSuggestions(recipeSuggestions: MealPlanPdfRecipeSuggestio
 function buildMealTableRows(mealGroups: MealPlanPdfMealGroup[]): MealTableRow[] {
 	return mealGroups.flatMap((group, groupIndex) => {
 		const normalizedGroupName = normalizeTextField(group.name) || `Refeicao ${groupIndex + 1}`
-		const schedule = resolveMealSchedule(normalizedGroupName, groupIndex)
+		const schedule = normalizeMealScheduleTime(group.scheduleTime) || resolveMealSchedule(normalizedGroupName, groupIndex)
 		const items = group.items.length > 0
 			? group.items
 			: [{
@@ -1794,7 +1809,7 @@ function MealPlanPdfDocument({
 		: mealGroups.map((group, groupIndex) => {
 			const mealLabel = normalizeTextField(group.name) || `Refeicao ${groupIndex + 1}`
 			return {
-				scheduleLabel: resolveMealSchedule(mealLabel, groupIndex),
+				scheduleLabel: normalizeMealScheduleTime(group.scheduleTime) || resolveMealSchedule(mealLabel, groupIndex),
 				mealLabel,
 				proteinG: 0,
 				carbohydrateG: 0,

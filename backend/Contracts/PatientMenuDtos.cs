@@ -57,6 +57,7 @@ public sealed class PatientMenuMealGroupDto
 {
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
+    public string? ScheduleTime { get; set; }
     public List<PatientMenuMealItemDto> Items { get; set; } = new();
 }
 

@@ -118,6 +118,7 @@ type SavedPatientMenuHistoryResponse = {
 type SavedPatientMenuMealGroupResponse = {
 	id: string
 	name: string
+	scheduleTime: string
 	items: SavedPatientMenuMealItemResponse[]
 }
 
@@ -264,6 +265,7 @@ const PLAN_PORTION_GROUP_LABELS = [
 	'Grupo 7 - Oleos e gorduras',
 	'Grupo 8 - Acucares e doces',
 ]
+const MEAL_SCHEDULE_TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/
 const notificationClassNames = {
 	root: NotificationStyle.root,
 	title: NotificationStyle.title,
@@ -648,6 +650,28 @@ function resolveDistributionSchedule(groupName: string, groupIndex: number) {
 
 	const fallbackHour = Math.min(7 + groupIndex * 3, 22)
 	return `${String(fallbackHour).padStart(2, '0')}:00`
+}
+
+function normalizeMealScheduleTime(value: unknown) {
+	if (typeof value !== 'string') {
+		return ''
+	}
+
+	const normalizedValue = value.trim()
+	return MEAL_SCHEDULE_TIME_PATTERN.test(normalizedValue) ? normalizedValue : ''
+}
+
+function resolveMealScheduleLabel(
+	scheduleTime: string,
+	groupName: string,
+	groupIndex: number,
+) {
+	const normalizedScheduleTime = normalizeMealScheduleTime(scheduleTime)
+	if (normalizedScheduleTime.length > 0) {
+		return normalizedScheduleTime
+	}
+
+	return resolveDistributionSchedule(groupName, groupIndex)
 }
 
 function formatPlanPreviewNumber(value: number, decimals: number) {
@@ -1038,7 +1062,7 @@ function buildPlanNutritionPreviewData(
 		}
 
 		return {
-			scheduleLabel: resolveDistributionSchedule(groupName, groupIndex),
+			scheduleLabel: resolveMealScheduleLabel(group.scheduleTime, groupName, groupIndex),
 			mealLabel: groupName,
 			proteinG: distributionTotals.proteinG,
 			carbohydrateG: distributionTotals.carbohydrateG,
@@ -1339,6 +1363,7 @@ function normalizeSavedMenuResponse(savedMenu: SavedPatientMenuResponse): SavedP
 		? savedMenu.mealGroups.map((mealGroup) => ({
 			id: typeof mealGroup.id === 'string' ? mealGroup.id : '',
 			name: typeof mealGroup.name === 'string' ? mealGroup.name : '',
+			scheduleTime: normalizeMealScheduleTime(mealGroup.scheduleTime),
 			items: Array.isArray(mealGroup.items)
 				? mealGroup.items.map((mealItem) => ({
 					id: typeof mealItem.id === 'string' ? mealItem.id : '',
