@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Backend.Contracts;
 using Backend.Data;
 using Backend.Models;
@@ -218,6 +219,7 @@ public class PatientMenusController : ControllerBase
             {
                 Id = NormalizeText(group.Id),
                 Name = NormalizeText(group.Name),
+                ScheduleTime = NormalizeScheduleTime(group.ScheduleTime),
                 Items = (group.Items ?? new List<PatientMenuMealItemDto>())
                     .Select(item => new PatientMenuMealItemDto
                     {
@@ -339,5 +341,18 @@ public class PatientMenusController : ControllerBase
     {
         var normalizedValue = NormalizeText(value);
         return normalizedValue.Length == 0 ? null : normalizedValue;
+    }
+
+    private static string? NormalizeScheduleTime(string? value)
+    {
+        var normalizedValue = NormalizeText(value);
+        if (normalizedValue.Length == 0)
+        {
+            return null;
+        }
+
+        return Regex.IsMatch(normalizedValue, "^(?:[01]\\d|2[0-3]):[0-5]\\d$")
+            ? normalizedValue
+            : null;
     }
 }

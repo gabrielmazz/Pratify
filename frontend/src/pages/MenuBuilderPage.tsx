@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react'
 import { ActionIcon, Box, Button, Divider, Fieldset, Grid, Group, LoadingOverlay, Modal, NumberInput, Select, Skeleton, Spoiler, Stack, Stepper, Text, TextInput, Textarea } from '@mantine/core'
+import { TimeInput } from '@mantine/dates'
 import { notifications } from '@mantine/notifications'
 import { useDebouncedValue } from '@mantine/hooks'
 import { IoAlertCircleOutline, IoCheckmarkCircleOutline } from 'react-icons/io5'
@@ -85,6 +86,7 @@ type MealItemState = {
 type MealGroupState = {
 	id: string
 	name: string
+	scheduleTime: string
 	items: MealItemState[]
 }
 
@@ -207,9 +209,16 @@ type AiGeneratedMealGroup = {
 	items: AiGeneratedMealItem[]
 }
 
+type PromptMealGroupTarget = {
+	name: string
+	scheduleTime: string
+	items: MealItemState[]
+}
+
 type AiMappedMealGroupsResult = {
 	mealGroups: MealGroupState[]
 	unmatchedFoods: string[]
+	groupsWithoutAiItemsCount: number
 }
 
 type AiPlanningFocus = 'balanced' | 'clinical' | 'variety' | 'performance'
@@ -326,6 +335,7 @@ const DEFAULT_MEAL_GROUP_LABELS = [
 	'Lanche da tarde',
 	'Jantar',
 ]
+const MEAL_SCHEDULE_TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/
 const AI_GENERATION_TOTAL_STEPS = 5
 const AI_GENERATION_INITIAL_STATUS = 'Preparando dados do paciente e do cardapio...'
 const AI_GUIDANCE_GENERATION_TOTAL_STEPS = 4
@@ -856,6 +866,28 @@ function resolveDistributionSchedule(groupName: string, groupIndex: number) {
 	return `${String(fallbackHour).padStart(2, '0')}:00`
 }
 
+function normalizeMealScheduleTime(value: unknown) {
+	if (typeof value !== 'string') {
+		return ''
+	}
+
+	const normalizedValue = value.trim()
+	return MEAL_SCHEDULE_TIME_PATTERN.test(normalizedValue) ? normalizedValue : ''
+}
+
+function resolveMealScheduleLabel(
+	scheduleTime: string,
+	groupName: string,
+	groupIndex: number,
+) {
+	const normalizedScheduleTime = normalizeMealScheduleTime(scheduleTime)
+	if (normalizedScheduleTime.length > 0) {
+		return normalizedScheduleTime
+	}
+
+	return resolveDistributionSchedule(groupName, groupIndex)
+}
+
 function formatPlanPreviewNumber(value: number, decimals: number) {
 	return value.toLocaleString('pt-BR', {
 		minimumFractionDigits: decimals,
@@ -1244,7 +1276,7 @@ function buildPlanNutritionPreviewData(
 		}
 
 		return {
-			scheduleLabel: resolveDistributionSchedule(groupName, groupIndex),
+			scheduleLabel: resolveMealScheduleLabel(group.scheduleTime, groupName, groupIndex),
 			mealLabel: groupName,
 			proteinG: distributionTotals.proteinG,
 			carbohydrateG: distributionTotals.carbohydrateG,
@@ -1432,10 +1464,6 @@ function parseAiGeneratedMealGroups(content: string): AiGeneratedMealGroup[] {
 				}]
 			})
 
-			if (parsedItems.length === 0) {
-				return []
-			}
-
 			return [{
 				name: groupName,
 				items: parsedItems,
@@ -1553,12 +1581,8 @@ function buildGuidanceGenerationPrompt(
 	currentGuidance: NutritionGuidanceState,
 ) {
 	const age = calculateAgeFromIsoDate(patient.birthDate)
-	const targetMealGroups = currentMealGroups.length > 0
-		? currentMealGroups.map((group, index) => group.name.trim() || `Refeicao ${index + 1}`)
-		: DEFAULT_MEAL_GROUP_LABELS
-	const mealGroupsDescription = targetMealGroups
-		.map((groupName, index) => `${index + 1}. ${groupName}`)
-		.join('\n')
+	const targetMealGroups = buildPromptMealGroupTargets(currentMealGroups)
+	const mealGroupsDescription = formatPromptMealGroupsDescription(targetMealGroups)
 	const currentGuidanceDraft = summarizeGuidanceDraft(currentGuidance)
 	const patientMedicalConditions = patient.medicalConditions.length > 0
 		? patient.medicalConditions.map((condition) => formatMedicalCondition(condition)).join(', ')
@@ -1572,10 +1596,12 @@ function buildGuidanceGenerationPrompt(
 		'{"hydrationGoalMl":3200,"mealRoutineGuidance":"...","foodQualityGuidance":"...","preparationGuidance":"...","behaviorGuidance":"...","symptomMonitoringGuidance":"...","restrictionsGuidance":"...","additionalGuidance":"...","orientationHighlights":["...","...","..."]}',
 		'Regras obrigatorias:',
 		'- Cada campo textual deve conter orientacoes concretas, detalhadas e acionaveis para o paciente.',
-		'- orientationHighlights deve conter de 4 a 8 bullets, cada um com uma frase completa e objetiva.',
-		'- Considerar objetivo, condicoes clinicas, atividade fisica e refeicoes ja planejadas.',
-		'- Evitar linguagem vaga; sugerir frequencia, exemplos e estrategia de adesao.',
-		'- Nao recomendar qualquer conduta medicamentosa.',
+			'- orientationHighlights deve conter de 4 a 8 bullets, cada um com uma frase completa e objetiva.',
+			'- Considerar objetivo, condicoes clinicas, atividade fisica e refeicoes ja planejadas.',
+			'- Considerar TODAS as refeicoes listadas, inclusive grupos adicionais criados manualmente.',
+			'- Usar os horarios listados como referencia para organizar rotina e intervalos.',
+			'- Evitar linguagem vaga; sugerir frequencia, exemplos e estrategia de adesao.',
+			'- Nao recomendar qualquer conduta medicamentosa.',
 		'Grupos de refeicao do plano atual:',
 		mealGroupsDescription,
 		'Rascunho atual do nutricionista (use como base e melhore com detalhes):',
@@ -1816,6 +1842,8 @@ function buildRecipeSuggestionsGenerationPrompt(
 	settings: AiRecipeGenerationSettingsState,
 ) {
 	const age = calculateAgeFromIsoDate(patient.birthDate)
+	const targetMealGroups = buildPromptMealGroupTargets(currentMealGroups)
+	const mealGroupsDescription = formatPromptMealGroupsDescription(targetMealGroups)
 	const selectedFoods = extractSelectedFoodsFromMealGroups(currentMealGroups)
 	const foodsList = selectedFoods.length > 0
 		? selectedFoods.map((foodName, index) => `${index + 1}. ${foodName}`).join('\n')
@@ -1834,17 +1862,20 @@ function buildRecipeSuggestionsGenerationPrompt(
 		'Formato obrigatorio:',
 		'{"recipes":[{"recipeName":"...","basedOnFoods":"...","ingredients":"Linha 1\\nLinha 2","preparationMethod":"...","yieldInfo":"...","portionQuantity":"..."}]}',
 		'Regras obrigatorias:',
-		`- Gerar exatamente ${recipeSettingsPrompt.recipeCount} receitas (array "recipes" com ${recipeSettingsPrompt.recipeCount} objetos).`,
-		`- Cada receita deve ter no maximo ${recipeSettingsPrompt.maxIngredientsPerRecipe} ingredientes principais.`,
-		'- Priorizar alimentos da lista fornecida em basedOnFoods.',
-		'- ingredients deve ser direto e objetivo, em linhas curtas.',
-		'- preparationMethod deve ser pratico e em linguagem simples para o paciente.',
-		'- yieldInfo e portionQuantity devem ser concretos.',
-		'- Evitar recomendacoes medicamentosas.',
-		'Parametros definidos pelo nutricionista:',
-		...recipeSettingsPrompt.promptLines,
-		'Alimentos selecionados no plano alimentar:',
-		foodsList,
+			`- Gerar exatamente ${recipeSettingsPrompt.recipeCount} receitas (array "recipes" com ${recipeSettingsPrompt.recipeCount} objetos).`,
+			`- Cada receita deve ter no maximo ${recipeSettingsPrompt.maxIngredientsPerRecipe} ingredientes principais.`,
+			'- Considerar TODAS as refeicoes listadas e os respectivos horarios.',
+			'- Priorizar alimentos da lista fornecida em basedOnFoods.',
+			'- ingredients deve ser direto e objetivo, em linhas curtas.',
+			'- preparationMethod deve ser pratico e em linguagem simples para o paciente.',
+			'- yieldInfo e portionQuantity devem ser concretos.',
+			'- Evitar recomendacoes medicamentosas.',
+			'Parametros definidos pelo nutricionista:',
+			...recipeSettingsPrompt.promptLines,
+			'Grupos de refeicao definidos no plano (obrigatorio considerar todos):',
+			mealGroupsDescription,
+			'Alimentos selecionados no plano alimentar:',
+			foodsList,
 		'Resumo atual do cardapio por refeicao:',
 		summarizeCurrentDraft(currentMealGroups),
 		'Orientacoes clinicas ja definidas pelo nutricionista:',
@@ -1914,36 +1945,83 @@ function findBestTacoFoodOption(foodName: string, tacoFoodOptions: TacoFoodOptio
 function mapAiGroupsToMealGroups(
 	aiGroups: AiGeneratedMealGroup[],
 	tacoFoodOptions: TacoFoodOption[],
+	targetMealGroups: MealGroupState[],
 ): AiMappedMealGroupsResult {
 	const unmatchedFoods = new Set<string>()
+	const safeTargetMealGroups = targetMealGroups.length > 0 ? targetMealGroups : getInitialMealGroups()
+	const consumedAiGroupIndexes = new Set<number>()
+	let groupsWithoutAiItemsCount = 0
 
-	const mappedGroups = aiGroups.map((group) => {
-		const mappedItems = group.items.map((item) => {
-			const matchedFood = findBestTacoFoodOption(item.food, tacoFoodOptions)
+	const findAiGroupForTarget = (targetGroupName: string, targetGroupIndex: number) => {
+		const normalizedTargetGroupName = normalizeSearchText(targetGroupName)
+		if (normalizedTargetGroupName.length > 0) {
+			const aiGroupIndexByName = aiGroups.findIndex((group, groupIndex) => (
+				!consumedAiGroupIndexes.has(groupIndex) &&
+				normalizeSearchText(group.name) === normalizedTargetGroupName
+			))
+
+			if (aiGroupIndexByName >= 0) {
+				consumedAiGroupIndexes.add(aiGroupIndexByName)
+				return aiGroups[aiGroupIndexByName]
+			}
+		}
+
+		if (
+			targetGroupIndex >= 0 &&
+			targetGroupIndex < aiGroups.length &&
+			!consumedAiGroupIndexes.has(targetGroupIndex)
+		) {
+			consumedAiGroupIndexes.add(targetGroupIndex)
+			return aiGroups[targetGroupIndex]
+		}
+
+		return null
+	}
+
+	const mappedGroups = safeTargetMealGroups.map((targetGroup, groupIndex) => {
+		const resolvedTargetGroupName = normalizeTextField(targetGroup.name) || `Refeicao ${groupIndex + 1}`
+		const resolvedTargetGroupSchedule = resolveMealScheduleLabel(
+			targetGroup.scheduleTime,
+			resolvedTargetGroupName,
+			groupIndex,
+		)
+		const matchedAiGroup = findAiGroupForTarget(resolvedTargetGroupName, groupIndex)
+		const mappedItems = (matchedAiGroup?.items ?? []).flatMap((item) => {
+			const normalizedFoodName = normalizeTextField(item.food)
+			if (normalizedFoodName.length === 0) {
+				return []
+			}
+
+			const matchedFood = findBestTacoFoodOption(normalizedFoodName, tacoFoodOptions)
 			if (!matchedFood) {
-				unmatchedFoods.add(item.food)
+				unmatchedFoods.add(normalizedFoodName)
 			}
 
 			const notes = [
 				item.notes,
-				!matchedFood ? `Sugestao IA: ${item.food}` : '',
+				!matchedFood ? `Sugestao IA: ${normalizedFoodName}` : '',
 			]
 				.filter((value) => value.trim().length > 0)
 				.join(' | ')
 
-			return {
+			return [{
 				id: generateId(),
 				foodId: matchedFood?.value ?? null,
-				food: matchedFood?.label ?? item.food,
+				food: matchedFood?.label ?? normalizedFoodName,
 				quantity: item.quantity,
 				measure: item.measure,
 				notes,
-			}
+			}]
 		})
 
+		if (mappedItems.length === 0) {
+			groupsWithoutAiItemsCount += 1
+		}
+
 		return {
-			id: generateId(),
-			name: group.name,
+			id: targetGroup.id.trim().length > 0 ? targetGroup.id : generateId(),
+			name: resolvedTargetGroupName,
+			scheduleTime: resolvedTargetGroupSchedule,
 			items: mappedItems.length > 0 ? mappedItems : [createMealItem()],
 		}
 	})
@@ -1951,21 +2029,23 @@ function mapAiGroupsToMealGroups(
 	return {
 		mealGroups: mappedGroups.length > 0 ? mappedGroups : getInitialMealGroups(),
 		unmatchedFoods: Array.from(unmatchedFoods),
+		groupsWithoutAiItemsCount,
 	}
 }
 
 // FABRICAS DE ESTADO:
 // Helpers para criar grupos/itens e ordenar grupos no drag and drop.
-function createMealGroup(name: string): MealGroupState {
+function createMealGroup(name: string, groupIndex: number): MealGroupState {
 	return {
 		id: generateId(),
 		name,
+		scheduleTime: resolveDistributionSchedule(name, groupIndex),
 		items: [createMealItem()],
 	}
 }
 
 function getInitialMealGroups() {
-	return DEFAULT_MEAL_GROUP_LABELS.map((label) => createMealGroup(label))
+	return DEFAULT_MEAL_GROUP_LABELS.map((label, groupIndex) => createMealGroup(label, groupIndex))
 }
 
 function normalizeMealGroupsFromApi(source: MealGroupState[] | null | undefined): MealGroupState[] {
@@ -1973,7 +2053,7 @@ function normalizeMealGroupsFromApi(source: MealGroupState[] | null | undefined)
 		return getInitialMealGroups()
 	}
 
-	const normalizedGroups = source.map((group) => {
+	const normalizedGroups = source.map((group, groupIndex) => {
 		const normalizedGroupName = typeof group.name === 'string' ? group.name : ''
 		const normalizedItems = Array.isArray(group.items)
 			? group.items.map((item) => ({
@@ -1989,6 +2069,7 @@ function normalizeMealGroupsFromApi(source: MealGroupState[] | null | undefined)
 		return {
 			id: typeof group.id === 'string' && group.id.trim().length > 0 ? group.id : generateId(),
 			name: normalizedGroupName,
+			scheduleTime: normalizeMealScheduleTime(group.scheduleTime) || resolveDistributionSchedule(normalizedGroupName, groupIndex),
 			items: normalizedItems.length > 0 ? normalizedItems : [createMealItem()],
 		}
 	})
@@ -2328,25 +2409,53 @@ function buildEnergyTargetsByGroup(groupNames: string[], tdee: number) {
 	})
 }
 
+function buildPromptMealGroupTargets(currentMealGroups: MealGroupState[]): PromptMealGroupTarget[] {
+	const safeMealGroups = currentMealGroups.length > 0
+		? currentMealGroups
+		: DEFAULT_MEAL_GROUP_LABELS.map((label, groupIndex) => ({
+			id: `default-meal-group-${groupIndex}`,
+			name: label,
+			scheduleTime: resolveDistributionSchedule(label, groupIndex),
+			items: [],
+		}))
+
+	return safeMealGroups.map((group, groupIndex) => {
+		const resolvedGroupName = normalizeTextField(group.name) || `Refeicao ${groupIndex + 1}`
+		const resolvedScheduleTime = resolveMealScheduleLabel(group.scheduleTime, resolvedGroupName, groupIndex)
+
+		return {
+			name: resolvedGroupName,
+			scheduleTime: resolvedScheduleTime,
+			items: Array.isArray(group.items) ? group.items : [],
+		}
+	})
+}
+
+function formatPromptMealGroupsDescription(targetMealGroups: PromptMealGroupTarget[]) {
+	return targetMealGroups
+		.map((group, index) => `${index + 1}. ${group.name} (horario: ${group.scheduleTime})`)
+		.join('\n')
+}
+
 // CONTEXTO PARA O PROMPT:
 // Resume o rascunho atual e cria regras clinicas para aumentar assertividade da IA.
 function summarizeCurrentDraft(mealGroups: MealGroupState[]) {
-	if (mealGroups.length === 0) {
+	const targetMealGroups = buildPromptMealGroupTargets(mealGroups)
+	if (targetMealGroups.length === 0) {
 		return '- Nenhum grupo preenchido ainda.'
 	}
 
-	return mealGroups.map((group, groupIndex) => {
-		const resolvedGroupName = group.name.trim() || `Refeicao ${groupIndex + 1}`
+	return targetMealGroups.map((group) => {
 		const foods = group.items
 			.map((item) => item.food.trim())
 			.filter((foodName) => foodName.length > 0)
 			.slice(0, 5)
 
 		if (foods.length === 0) {
-			return `- ${resolvedGroupName}: sem alimentos definidos.`
+			return `- ${group.name} (${group.scheduleTime}): sem alimentos definidos.`
 		}
 
-		return `- ${resolvedGroupName}: ${foods.join(', ')}.`
+		return `- ${group.name} (${group.scheduleTime}): ${foods.join(', ')}.`
 		}).join('\n')
 }
 
@@ -2472,31 +2581,35 @@ function buildMenuGenerationPrompt(
 	const patientMedicalConditions = patient.medicalConditions.length > 0
 		? patient.medicalConditions.map((condition) => formatMedicalCondition(condition)).filter((condition) => condition.length > 0).join(', ')
 		: 'Nenhuma'
-	const targetMealGroups = currentMealGroups.length > 0
-		? currentMealGroups.map((group, index) => group.name.trim() || `Refeicao ${index + 1}`)
-		: DEFAULT_MEAL_GROUP_LABELS
-	const targetMealGroupsDescription = targetMealGroups
-		.map((groupName, index) => `${index + 1}. ${groupName}`)
-		.join('\n')
-	const energyTargets = buildEnergyTargetsByGroup(targetMealGroups, patient.tdee)
+	const targetMealGroups = buildPromptMealGroupTargets(currentMealGroups)
+	const targetMealGroupNames = targetMealGroups.map((group) => group.name)
+	const targetMealGroupsDescription = formatPromptMealGroupsDescription(targetMealGroups)
+	const energyTargets = buildEnergyTargetsByGroup(targetMealGroupNames, patient.tdee)
 	const energyTargetsDescription = energyTargets
 		.map((target) => `- ${target.name}: ~${target.percentage}% (~${target.kcalTarget} kcal)`)
 		.join('\n')
 	const currentDraftDescription = summarizeCurrentDraft(currentMealGroups)
 	const clinicalRules = buildClinicalRules(patient).join('\n')
 	const aiSettingsPrompt = buildAiSettingsPrompt(settings)
-	const strictJsonExample = `{"groups":[${targetMealGroups.map((groupName) => `{"name":"${groupName}","items":[{"food":"...","quantity":"...","measure":"...","notes":""}]}`).join(',')}]}`
+	const strictJsonExample = JSON.stringify({
+		groups: targetMealGroupNames.map((groupName) => ({
+			name: groupName,
+			items: [{ food: '...', quantity: '...', measure: '...', notes: '' }],
+		})),
+	})
 
 	return [
 		'Voce e um nutricionista clinico especialista em montar cardapios personalizados.',
 		'Objetivo: gerar um cardapio diario mais certeiro para o paciente, em portugues do Brasil.',
 		'Responda SOMENTE JSON valido, sem markdown, sem comentarios e sem texto fora do JSON.',
-		'Formato de saida obrigatorio (nao altere chaves):',
-		strictJsonExample,
-		'Regras obrigatorias:',
-		`- Gere exatamente ${targetMealGroups.length} grupos.`,
-		'- Mantenha a MESMA ORDEM e os MESMOS NOMES dos grupos informados.',
-		`- Cada grupo deve ter de 2 a ${aiSettingsPrompt.maxItemsPerGroup} itens (nao retorne grupo vazio).`,
+			'Formato de saida obrigatorio (nao altere chaves):',
+			strictJsonExample,
+			'Regras obrigatorias:',
+			`- Gere exatamente ${targetMealGroupNames.length} grupos.`,
+			'- Mantenha a MESMA ORDEM e os MESMOS NOMES dos grupos informados.',
+			'- Considere todos os grupos listados, inclusive os adicionados manualmente pelo nutricionista.',
+			'- Use os horarios listados como referencia de distribuicao ao longo do dia.',
+			`- Cada grupo deve ter de 2 a ${aiSettingsPrompt.maxItemsPerGroup} itens (nao retorne grupo vazio).`,
 		'- Todos os itens devem conter: food, quantity, measure, notes.',
 		'- food deve ser nome curto de alimento, sem frase longa e sem receita completa.',
 		'- quantity deve ser valor curto (ex.: "1", "2", "120", "150").',
@@ -3595,7 +3708,7 @@ export function MenuBuilderPage() {
 	const handleAddMealGroup = () => {
 		const normalizedLabel = customMealGroupLabel.trim()
 		const nextLabel = normalizedLabel || `Refeicao ${mealGroups.length + 1}`
-		setMealGroups((previousGroups) => [...previousGroups, createMealGroup(nextLabel)])
+		setMealGroups((previousGroups) => [...previousGroups, createMealGroup(nextLabel, previousGroups.length)])
 		setCustomMealGroupLabel('')
 	}
 
@@ -3610,6 +3723,19 @@ export function MenuBuilderPage() {
 					? {
 						...group,
 						name: nextValue,
+					}
+					: group
+			)),
+		)
+	}
+
+	const handleMealGroupScheduleTimeChange = (groupId: string, nextValue: string) => {
+		setMealGroups((previousGroups) =>
+			previousGroups.map((group) => (
+				group.id === groupId
+					? {
+						...group,
+						scheduleTime: normalizeMealScheduleTime(nextValue),
 					}
 					: group
 			)),
@@ -3780,6 +3906,8 @@ export function MenuBuilderPage() {
 			return
 		}
 
+		const targetMealGroupsForGeneration = mealGroups.length > 0 ? mealGroups : getInitialMealGroups()
+
 		try {
 			setIsGeneratingAiMenu(true)
 			setIsAiSettingsModalOpen(false)
@@ -3792,18 +3920,18 @@ export function MenuBuilderPage() {
 			setAiGenerationStep(2)
 			setAiGenerationStatusMessage(`Enviando prompt para o modelo ${targetModelLabel}...`)
 
-			const response = await fetch(buildApiUrl('/api/ai/chat'), {
-				method: 'POST',
+				const response = await fetch(buildApiUrl('/api/ai/chat'), {
+					method: 'POST',
 				headers: {
 					Authorization: `Bearer ${token}`,
 					Accept: 'application/json',
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify({
-					prompt: buildMenuGenerationPrompt(patient, mealGroups, aiGenerationSettings),
-					model: modelOverride ? modelOverride : undefined,
-				}),
-			})
+					body: JSON.stringify({
+						prompt: buildMenuGenerationPrompt(patient, targetMealGroupsForGeneration, aiGenerationSettings),
+						model: modelOverride ? modelOverride : undefined,
+					}),
+				})
 
 			if (response.status === 401) {
 				logout()
@@ -3824,20 +3952,41 @@ export function MenuBuilderPage() {
 				throw new Error('A IA retornou um formato invalido. Tente novamente.')
 			}
 
-			setAiGenerationStep(4)
-			setAiGenerationStatusMessage('Mapeando alimentos sugeridos com a tabela TACO...')
-			const { mealGroups: mappedMealGroups, unmatchedFoods } = mapAiGroupsToMealGroups(aiGroups, tacoFoodOptions)
-			setAiGenerationStep(5)
-			setAiGenerationStatusMessage('Aplicando sugestoes e finalizando...')
-			setMealGroups(mappedMealGroups)
-
-			if (unmatchedFoods.length > 0) {
-				showWarningNotification(
-					'Cardapio gerado com IA',
-					`${unmatchedFoods.length} alimento(s) nao foi(ram) mapeado(s) automaticamente na TACO. Revise os itens com observacao.`,
+				setAiGenerationStep(4)
+				setAiGenerationStatusMessage('Mapeando alimentos sugeridos com a tabela TACO...')
+				const {
+					mealGroups: mappedMealGroups,
+					unmatchedFoods,
+					groupsWithoutAiItemsCount,
+				} = mapAiGroupsToMealGroups(
+					aiGroups,
+					tacoFoodOptions,
+					targetMealGroupsForGeneration,
 				)
-			} else {
-				showSuccessNotification('Cardapio gerado com IA', 'Cardapio aplicado com sucesso.')
+				setAiGenerationStep(5)
+				setAiGenerationStatusMessage('Aplicando sugestoes e finalizando...')
+				setMealGroups(mappedMealGroups)
+
+				const warningMessages: string[] = []
+				if (groupsWithoutAiItemsCount > 0) {
+					warningMessages.push(
+						`${groupsWithoutAiItemsCount} grupo(s) nao recebeu(ram) itens validos da IA e foi(ram) mantido(s) para ajuste manual.`,
+					)
+				}
+
+				if (unmatchedFoods.length > 0) {
+					warningMessages.push(
+						`${unmatchedFoods.length} alimento(s) nao foi(ram) mapeado(s) automaticamente na TACO. Revise os itens com observacao.`,
+					)
+				}
+
+				if (warningMessages.length > 0) {
+					showWarningNotification(
+						'Cardapio gerado com IA',
+						warningMessages.join(' '),
+					)
+				} else {
+					showSuccessNotification('Cardapio gerado com IA', 'Cardapio aplicado com sucesso.')
 			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : GENERATE_MENU_ERROR_MESSAGE
@@ -3894,11 +4043,26 @@ export function MenuBuilderPage() {
 					/>
 				</Box>
 
-				<Box className="min-h-0 flex-1 p-3 md:p-6">
-					<PageContentContainer className="bg-[hsl(var(--card))]" contentClassName="relative h-full min-h-0 overflow-hidden p-3 md:p-4">
-						{/* ESTADOS DE CONTEUDO DA PAGINA: loading, erro, dados carregados ou fallback. */}
-						{isLoading ? (
-							<Stack gap="md">
+					<Box className="min-h-0 flex-1 p-3 md:p-6">
+						<PageContentContainer
+							className="bg-[hsl(var(--card))]"
+							contentClassName="relative h-full min-h-0 overflow-hidden p-3 md:p-4"
+							footer={(
+								<Group justify="end" className="w-full">
+									<Button
+										type="button"
+										radius="md"
+										classNames={neutralButtonClassNames}
+										onClick={() => navigate('/patients')}
+									>
+										Voltar para lista
+									</Button>
+								</Group>
+							)}
+						>
+							{/* ESTADOS DE CONTEUDO DA PAGINA: loading, erro, dados carregados ou fallback. */}
+							{isLoading ? (
+								<Stack gap="md">
 								<Box className="rounded-2xl border border-[#d2e4eb] bg-[linear-gradient(180deg,#ffffff_0%,#f8fbfd_100%)] p-5">
 									<Skeleton height={22} width="38%" radius="sm" />
 									<Skeleton height={14} mt={12} width="52%" radius="sm" />
@@ -3913,23 +4077,13 @@ export function MenuBuilderPage() {
 									</Grid>
 								</Box>
 							</Stack>
-						) : errorMessage ? (
-							<Box className="rounded-2xl border border-red-200 bg-red-50/80 p-5">
-								<Text className="text-sm font-semibold text-red-700">
-									{errorMessage}
-								</Text>
-								<Group className="mt-3">
-									<Button
-										type="button"
-										radius="md"
-										classNames={neutralButtonClassNames}
-										onClick={() => navigate('/patients')}
-									>
-										Voltar para pacientes
-									</Button>
-								</Group>
-							</Box>
-						) : patient ? (
+							) : errorMessage ? (
+								<Box className="rounded-2xl border border-red-200 bg-red-50/80 p-5">
+									<Text className="text-sm font-semibold text-red-700">
+										{errorMessage}
+									</Text>
+								</Box>
+							) : patient ? (
 							<Box className="h-full min-h-0 rounded-[22px] border border-[#d0e0e8] bg-[linear-gradient(180deg,#fbfdff_0%,#f4f8fb_100%)] p-3 md:p-4">
 									<Grid
 										columns={12}
@@ -4152,6 +4306,10 @@ export function MenuBuilderPage() {
 														const isDropTarget = mealGroupDropTarget?.groupId === group.id && !isDraggingGroup
 														const showDropBefore = isDropTarget && mealGroupDropTarget?.placement === 'before'
 														const showDropAfter = isDropTarget && mealGroupDropTarget?.placement === 'after'
+														const groupRawName = group.name.trim()
+														const groupLegendName = groupRawName || 'Nova refeicao'
+														const groupScheduleName = groupRawName || `Refeicao ${groupIndex + 1}`
+														const resolvedGroupScheduleTime = resolveMealScheduleLabel(group.scheduleTime, groupScheduleName, groupIndex)
 
 														return (
 															<Box
@@ -4172,7 +4330,7 @@ export function MenuBuilderPage() {
 																) : null}
 
 																<Fieldset
-																	legend={`${groupIndex + 1}. ${group.name.trim() || 'Nova refeicao'}`}
+																	legend={`${groupIndex + 1}. ${groupLegendName}`}
 																	radius="md"
 																	className="rounded-2xl border border-[#d2e4eb] bg-white"
 																	classNames={{
@@ -4180,7 +4338,7 @@ export function MenuBuilderPage() {
 																	}}
 																>
 																	<Stack gap="sm">
-																		<Group align="flex-end" wrap="nowrap">
+																		<Group align="flex-end" wrap="wrap">
 																			<TextInput
 																				label="Nome da refeicao"
 																				placeholder="Ex.: Jantar"
@@ -4188,7 +4346,16 @@ export function MenuBuilderPage() {
 																				onChange={(event) => handleMealGroupNameChange(group.id, event.currentTarget.value)}
 																				radius="md"
 																				classNames={textInputClassNames}
-																				className="w-full"
+																				className="min-w-[220px] grow"
+																			/>
+
+																			<TimeInput
+																				label="Horario"
+																				value={resolvedGroupScheduleTime}
+																				onChange={(event) => handleMealGroupScheduleTimeChange(group.id, event.currentTarget.value)}
+																				radius="md"
+																				classNames={textInputClassNames}
+																				className="w-[188px] shrink-0"
 																			/>
 
 																			<ActionIcon
