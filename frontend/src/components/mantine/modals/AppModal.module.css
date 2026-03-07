@@ -1,0 +1,39 @@
+.content {
+  overflow: hidden;
+  border: 1px solid #c8e4ef;
+  border-radius: 1rem;
+  background-color: #ffffff;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.24);
+}
+
+.header {
+  border-bottom: 1px solid #d3e4eb;
+  background: linear-gradient(
+    125deg,
+    rgba(39, 144, 176, 0.1) 0%,
+    rgba(148, 186, 101, 0.1) 62%,
+    rgba(255, 255, 255, 0.98) 100%
+  );
+  padding: 0.75rem 1.25rem;
+}
+
+.title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #0f172a;
+}
+
+.body {
+  padding: 0;
+}
+
+.close {
+  color: #64748b;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.close:hover {
+  background-color: #f1f5f9;
+  color: #1e293b;
+}
