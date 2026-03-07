@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react'
-import { ActionIcon, Box, Button, Divider, Fieldset, Grid, Group, LoadingOverlay, Modal, NumberInput, Select, Skeleton, Spoiler, Stack, Stepper, Text, TextInput, Textarea } from '@mantine/core'
+import { ActionIcon, Box, Button, Divider, Fieldset, Grid, Group, LoadingOverlay, NumberInput, Select, Skeleton, Spoiler, Stack, Stepper, Text, TextInput, Textarea } from '@mantine/core'
 import { TimeInput } from '@mantine/dates'
 import { notifications } from '@mantine/notifications'
 import { useDebouncedValue } from '@mantine/hooks'
@@ -9,6 +9,7 @@ import { MdAdd, MdArrowBack, MdArrowForward, MdAutoAwesome, MdDeleteOutline, MdD
 
 import TextInputStyle from '../components/mantine/inputs/TextInput.module.css'
 import ButtonStyle from '../components/mantine/buttons/PrimaryButton.module.css'
+import { AppModal } from '../components/mantine/modals/AppModal'
 import NotificationStyle from '../components/mantine/notifications/Notification.module.css'
 
 import { SideBar } from '../components/custom/sidebar/SideBar'
@@ -3080,7 +3081,7 @@ export function MenuBuilderPage() {
 
 			const loadTacoFoodOptions = async () => {
 				try {
-					const tacoModule = await import('../../../dates/tables/TACO.json')
+					const tacoModule = await import('../../dates/tables/TACO.json')
 					if (!isMounted) {
 						return
 					}
@@ -3359,16 +3360,6 @@ export function MenuBuilderPage() {
 	// CONFIGURACOES DE APRESENTACAO DA PAGINA E DO MODAL.
 	const pageTitle = patient ? `Cardapio: ${patient.name}` : 'Cardapio do paciente'
 	const modalActionButtonSizeClassName = 'w-[156px]'
-	const modalClassNames = {
-		content:
-			'overflow-hidden rounded-2xl border border-[#c8e4ef] bg-white shadow-[0_20px_48px_rgba(15,23,42,0.24)]',
-		header:
-			'border-b border-[#d3e4eb] bg-[linear-gradient(125deg,rgba(39,144,176,0.10)_0%,rgba(148,186,101,0.10)_62%,rgba(255,255,255,0.98)_100%)] px-5 py-3',
-		title: 'text-sm font-semibold tracking-[0.01em] text-slate-900',
-		body: 'p-0',
-		close:
-			'text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800',
-	}
 
 	// CONTROLE DE ABERTURA/FECHAMENTO DO MODAL DE PARAMETROS.
 	const closeAiSettingsModal = () => {
@@ -4965,7 +4956,7 @@ export function MenuBuilderPage() {
 				</Box>
 
 					{/* MODAL DE PARAMETRIZACAO DA IA: nutricionista define estrategia antes de gerar. */}
-					<Modal
+					<AppModal
 						opened={isAiSettingsModalOpen}
 						onClose={closeAiSettingsModal}
 						title="Parametros da geracao com IA"
@@ -4974,7 +4965,6 @@ export function MenuBuilderPage() {
 						closeOnClickOutside={!isGeneratingAiMenu}
 						closeOnEscape={!isGeneratingAiMenu}
 						size="lg"
-						classNames={modalClassNames}
 					>
 						<Box className="p-5">
 							<Stack gap="sm">
@@ -5179,9 +5169,9 @@ export function MenuBuilderPage() {
 						</Group>
 					</Stack>
 				</Box>
-				</Modal>
+				</AppModal>
 
-				<Modal
+				<AppModal
 					opened={isAiRecipeSettingsModalOpen}
 					onClose={closeAiRecipeSettingsModal}
 					title="Parametros da geracao de receitas com IA"
@@ -5190,7 +5180,6 @@ export function MenuBuilderPage() {
 					closeOnClickOutside={!isGeneratingAiRecipes}
 					closeOnEscape={!isGeneratingAiRecipes}
 					size="lg"
-					classNames={modalClassNames}
 				>
 					<Box className="p-5">
 						<Stack gap="sm">
@@ -5397,7 +5386,7 @@ export function MenuBuilderPage() {
 							</Group>
 						</Stack>
 					</Box>
-				</Modal>
+				</AppModal>
 
 					{/* OVERLAY GLOBAL DE PROCESSAMENTO: bloqueia interacao enquanto a IA esta rodando. */}
 					{isGeneratingAiMenu ? (

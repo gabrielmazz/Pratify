@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Box, Button, Group, Modal, Skeleton, Table, Text } from '@mantine/core'
+import { Box, Button, Group, Skeleton, Table, Text } from '@mantine/core'
 import { useNavigate } from 'react-router-dom'
 
 import ButtonStyle from '../components/mantine/buttons/PrimaryButton.module.css'
+import { AppModal } from '../components/mantine/modals/AppModal'
 import { SideBar } from '../components/custom/sidebar/SideBar'
 import { PageInfo } from '../components/custom/pageInfo/PageInfo'
 import { PageContentContainer } from '../components/custom/pageContentContainer/PageContentContainer'
@@ -328,16 +329,6 @@ export function PatientsPage() {
 		label: ButtonStyle.neutralLabel,
 	}
 	const modalActionButtonSizeClassName = 'w-[128px]'
-	const modalClassNames = {
-		content:
-			'overflow-hidden rounded-2xl border border-[#c8e4ef] bg-white shadow-[0_20px_48px_rgba(15,23,42,0.24)]',
-		header:
-			'border-b border-[#d3e4eb] bg-[linear-gradient(125deg,rgba(39,144,176,0.10)_0%,rgba(148,186,101,0.10)_62%,rgba(255,255,255,0.98)_100%)] px-5 py-3',
-		title: 'text-sm font-semibold tracking-[0.01em] text-slate-900',
-		body: 'p-0',
-		close:
-			'text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800',
-	}
 
 	const hasPatients = patients.length > 0
 	const sortedPatients = useMemo(() => {
@@ -876,13 +867,12 @@ export function PatientsPage() {
 				</Box>
 			</Box>
 
-			<Modal
+			<AppModal
 				opened={patientToEdit !== null}
 				onClose={closeEditModal}
 				title="Confirmar edição"
 				centered
 				size="30%"
-				classNames={modalClassNames}
 				overlayProps={{ blur: 2, backgroundOpacity: 0.45 }}
 			>
 				<Box className="px-5 pb-5 pt-4">
@@ -919,9 +909,9 @@ export function PatientsPage() {
 						</Button>
 					</Group>
 				</Box>
-			</Modal>
+			</AppModal>
 
-			<Modal
+			<AppModal
 				opened={patientToDelete !== null}
 				onClose={closeDeleteModal}
 				title="Confirmar exclusão"
@@ -930,7 +920,6 @@ export function PatientsPage() {
 				closeOnClickOutside={!isDeletingPatient}
 				closeOnEscape={!isDeletingPatient}
 				withCloseButton={!isDeletingPatient}
-				classNames={modalClassNames}
 				overlayProps={{ blur: 2, backgroundOpacity: 0.45 }}
 			>
 				<Box className="px-5 pb-5 pt-4">
@@ -968,7 +957,7 @@ export function PatientsPage() {
 						</Button>
 					</Group>
 				</Box>
-			</Modal>
+			</AppModal>
 		</Box>
 	)
 }
