@@ -240,6 +240,14 @@ builder.Services.AddCors(options =>
 // Construcao final da aplicacao apos registrar todos os servicos.
 var app = builder.Build();
 
+// Garante que o banco exista e aplica migrations pendentes no startup.
+// Em desenvolvimento com Docker, isso evita depender de um passo manual apos recriar o banco.
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    dbContext.Database.Migrate();
+}
+
 // Swagger habilitado apenas em Development para facilitar desenvolvimento local.
 if (app.Environment.IsDevelopment())
 {
