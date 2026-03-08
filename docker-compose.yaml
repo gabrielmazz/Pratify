@@ -7,16 +7,30 @@ services:
   frontend:
     build:
       context: ./frontend
-    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 8080"
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port ${FRONTEND_PORT}"
     ports:
-      - "8080:8080"
+      - "${FRONTEND_PORT}:${FRONTEND_PORT}"
     volumes:
       - ./frontend:/app
       - frontend_node_modules:/app/node_modules
     environment:
       VITE_API_PROXY_TARGET: http://host.docker.internal:5017
 
+  #  Criação do docker para o banco de dados PostgreSQL, aonde ele irá rodar na porta 5432, e tem como variaveis de 
+  # ambiente o nome do banco, o usuario e a senha, alem de um volume para persistencia dos dados
+  dbPostgres:
+    image: postgres:16
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
 volumes:
   frontend_node_modules:
+  postgres_data:
 
   # ------------------------------------------------------------------------------------------------------------------ #
